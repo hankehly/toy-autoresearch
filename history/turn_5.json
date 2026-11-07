@@ -1,0 +1,6 @@
+{
+  "idea": "Add yesterday's residual (AR(1)) correction to regression",
+  "seconds": 34,
+  "cost_usd": 0.1356788,
+  "agent_reply": "I changed `model.py` to add an adjustment for the previous day's miss, and `check.py` runs it without crashing. I didn't score it on the practice year, so I don't know if it helps.\n\nThe model still fits weekday dummies plus heating and cooling degrees. Now `fit()` also estimates how much one day's error carries into the next. `predict()` adds that share of yesterday's error to today's prediction, only when yesterday is in the history.\n\nThe ledger shows the regression kept in turn 1 and three thrown-away tweaks (log load, yesterday's temperature features, new thresholds). None used recent loads, which is the third idea in `program.md`.\n\nMy first attempt at a practice-year scoring script hit shell errors and never ran.\n\nIDEA: Add yesterday's residual (AR(1)) correction to regression"
+}

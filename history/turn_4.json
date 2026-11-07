@@ -1,0 +1,6 @@
+{
+  "idea": "Shift heating/cooling thresholds to 18C and 22C",
+  "seconds": 39,
+  "cost_usd": 0.15536350000000002,
+  "agent_reply": "I'm done with the change, and `check.py` runs without crashing. I moved the heating and cooling thresholds from 17/21 \u00b0C to 18/22 \u00b0C, which is `model.py`'s only change this turn.\n\nMy own practice-year walk-forward (Jul 2023 \u2013 Jun 2024) gives 3.008 MAE, against 3.036 before. That 0.9% gain is small, so it probably won't clear the 98%+ bar.\n\nBefore settling on the thresholds I tried a least-absolute-deviation fit instead of least squares. It scored worse (3.186), so I dropped it.\n\nI also checked the residuals. They show no autocorrelation and no monthly bias, so most of what's left looks like noise.\n\nIDEA: Shift heating/cooling thresholds to 18C and 22C"
+}
