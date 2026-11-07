@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).parent.parent  # the repo root (this file lives in scripts/)
 rng = np.random.default_rng(7)
 
 days = pd.date_range("2023-01-01", "2025-12-31", freq="D")

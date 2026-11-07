@@ -8,8 +8,10 @@ The smallest working version of an agent research loop, with guards against over
     loop.py     each turn: fresh workspace -> fresh agent makes one change ->
                 judge compares -> keep or throw away -> ledger
     history/    every model the agent wrote, plus its reply and cost per turn
-    make_data.py  rebuilds the fake town (seeded, so you get the same data)
-    night_sim.py  simulates whole nights of 300 ideas and checks every keep against the truth
+    scripts/    helpers outside the main loop:
+                make_data.py   rebuilds the fake town (seeded, so you get the same data)
+                night_sim.py   simulates whole nights of 300 ideas and checks every keep against the truth
+                bundle_sim.py  tests whether small changes add up when submitted together
 
 ## Who sees which months
 
@@ -27,7 +29,7 @@ history, June 2025 from 29.
     python loop.py run 5      # five agent turns; needs Claude Code installed and logged in
     python loop.py vault      # open the vault once, at the end
     python loop.py reset      # start over from the baseline
-    python night_sim.py       # the overnight experiment, no agent needed (about 5 minutes)
+    python scripts/night_sim.py   # the overnight experiment, no agent needed (about 5 minutes)
 
 The ledger and history/ in this folder are from the example run below (agent: Claude Sonnet
 via `claude -p`; change the model in loop.py). `python loop.py reset` clears them.

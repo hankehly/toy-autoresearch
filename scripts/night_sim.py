@@ -4,7 +4,7 @@ The town is made up, so we can measure each model's TRUE error: re-live the same
 years in 100 parallel towns (same recipe, fresh weather and noise) and average the misses.
 That lets us check every "kept" decision against the truth.
 
-    python night_sim.py      # about 5 minutes; prints the summary, writes night_sim.csv
+    python3 scripts/night_sim.py      # about 5 minutes; prints the summary, writes night_sim.csv
 
 The robot is dumber than Claude, but the trap is statistical, so it catches any researcher.
 Each turn it has one idea and tries 7 versions of it privately, then submits the best
