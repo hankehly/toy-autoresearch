@@ -84,3 +84,9 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
 ## How Hank likes explanations
 When using math or formulas, give a plain-English interpretation, a small numeric example
 with real numbers, and an analogy or intuition. Minimize symbols and define every variable.
+
+## Background research
+Published work on agent research loops: Karpathy's autoresearch, the five big pitfalls with
+their evidence, and ways to reuse a holdout safely, with sources. Imported so it's always in
+context:
+@docs/research.md

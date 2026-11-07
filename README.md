@@ -12,6 +12,13 @@ The smallest working version of an agent research loop, with guards against over
                 make_data.py   rebuilds the fake town (seeded, so you get the same data)
                 night_sim.py   simulates whole nights of 300 ideas and checks every keep against the truth
                 bundle_sim.py  tests whether small changes add up when submitted together
+    docs/       the diagram below
+
+## One turn of the loop
+
+![One turn: lab/ is copied to a throwaway workspace, the agent changes model.py, the judge keeps or throws it away, and the ledger records the verdict for the next turn](docs/research-loop.drawio.png)
+
+The diagram is a `.drawio.png`: it displays as an image and also opens for editing in draw.io.
 
 ## Who sees which months
 
