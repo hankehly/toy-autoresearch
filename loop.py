@@ -23,6 +23,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.resolve()
 LAB, JUDGE, HISTORY = ROOT / "lab", ROOT / "judge", ROOT / "history"
+
+# TODO: Does the ledger show amount of improvement, or just kept/rejected?
 LEDGER = LAB / "ledger.tsv"
 AGENT_FILES = ["program.md", "model.py", "check.py", "data.csv", "ledger.tsv"]
 IMAGES = ["model-sandbox", "agent-sandbox", "agent-proxy"]  # folders in docker/, each built as the Docker image toy-<name>
