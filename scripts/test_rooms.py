@@ -1,6 +1,6 @@
 """Proves that the rooms' walls hold. Run it from the repo root:
 
-    python3 scripts/test_rooms.py
+    uv run scripts/test_rooms.py
 
 The model room: honest models must score exactly what the old judge gave them, and
 models that try to cheat must crash instead of scoring.

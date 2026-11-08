@@ -37,20 +37,20 @@ history, June 2025 from 29.
 
 ## Run it
 
-Needs Docker Desktop (running) and Claude Code.
+Needs Docker Desktop (running), Claude Code and [uv](https://docs.astral.sh/uv/).
 
-    pip install numpy pandas scipy
-    python loop.py build          # build the rooms (run and holdout also do this first)
-    python scripts/test_rooms.py  # check that the walls hold (about 30 seconds)
+    uv sync                       # once: Python 3.12 and the locked packages, into .venv
+    uv run loop.py build          # build the rooms (run and holdout also do this first)
+    uv run scripts/test_rooms.py  # check that the walls hold (about 30 seconds)
     claude setup-token            # once: a login token the agent room can use
     export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>
-    python loop.py run 5          # five agent turns
-    python loop.py holdout        # score the holdout once, at the end
-    python loop.py reset          # start over from the baseline
-    python scripts/night_sim.py   # the overnight experiment, no agent needed (about 5 minutes)
+    uv run loop.py run 5          # five agent turns
+    uv run loop.py holdout        # score the holdout once, at the end
+    uv run loop.py reset          # start over from the baseline
+    uv run scripts/night_sim.py   # the overnight experiment, no agent needed (about 5 minutes)
 
 The ledger and history/ in this folder are from the example run below (agent: Claude Sonnet
-via `claude -p`; change the model in loop.py). `python loop.py reset` clears them.
+via `claude -p`; change the model in loop.py). `uv run loop.py reset` clears them.
 
 ## The example run (average miss per day, MWh; lower is better)
 
@@ -112,7 +112,7 @@ Walls, not instructions, keep the agent's code away from the answers:
 
 Before the rooms, the judge ran `model.py` in its own process, so a 6-line model could read
 today's answer from the judge's variables. It was kept, and the holdout agreed with it.
-`python scripts/test_rooms.py` now runs four such cheats and checks that each one crashes.
+`uv run scripts/test_rooms.py` now runs four such cheats and checks that each one crashes.
 
 The door stays up after a run. Its log lists every request the agent sent through it, until
 the next run or test run starts a fresh door. Attempts to go around the door simply fail,

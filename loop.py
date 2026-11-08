@@ -6,10 +6,10 @@
      with a bar that rises with every idea tested (see judge.py)
   4. keep it (new champion) or throw it away, and write the verdict into ledger.tsv
 
-    python loop.py run 5     # five more turns (continues from the ledger)
-    python loop.py holdout   # score the holdout once, at the end: Jul - Dec 2025
-    python loop.py reset     # back to the baseline
-    python loop.py build     # build the rooms' Docker images (run and holdout do this first anyway)
+    uv run loop.py run 5     # five more turns (continues from the ledger)
+    uv run loop.py holdout   # score the holdout once, at the end: Jul - Dec 2025
+    uv run loop.py reset     # back to the baseline
+    uv run loop.py build     # build the rooms' Docker images (run and holdout do this first anyway)
 """
 import json
 import os

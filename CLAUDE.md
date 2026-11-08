@@ -84,11 +84,13 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
   market's odds rather than by ROI.
 
 ## Practical notes
-- Python 3 with numpy, pandas and scipy (`scripts/night_sim.py` and `scripts/bundle_sim.py` need scipy).
+- uv manages Python 3.12 and the packages (`pyproject.toml`, `uv.lock`). Run everything with
+  `uv run` (for example `uv run loop.py run 5`), not `python3`, and add packages with `uv add`.
+  numpy and pandas are pinned to the rooms' versions: change them in `pyproject.toml` and both
+  room Dockerfiles together. scipy is only for the simulations.
 - `scripts/` holds helpers outside the main loop (`make_data.py`, the simulations). Run them from the repo root.
-  Use `python3` on macOS.
-- Docker Desktop must be running. `python3 loop.py build` builds the three images (`run` and
-  `holdout` do it first anyway); `python3 scripts/test_rooms.py` checks the walls (about 30 s).
+- Docker Desktop must be running. `uv run loop.py build` builds the three images (`run` and
+  `holdout` do it first anyway); `uv run scripts/test_rooms.py` checks the walls (about 30 s).
 - The agent room can't use the Mac's Keychain login, so `loop.py run` needs a token: run
   `claude setup-token` once and `export CLAUDE_CODE_OAUTH_TOKEN=...` in the shell. The room
   runs `claude -p --model sonnet` with Claude Code 2.1.319. Our agent turns cost about
@@ -96,7 +98,7 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
 - The door stays up after a run; `docker exec toy-agent-door cat /var/log/squid/access.log`
   lists every request the agent sent through it, until the next run or test run replaces
   the door. Attempts to go around the door fail without a trace.
-- `python3 loop.py reset` returns to the baseline and clears the ledger and history.
+- `uv run loop.py reset` returns to the baseline and clears the ledger and history.
 - If you change a room or the notes, run `scripts/test_rooms.py`. Docker is a strong fence
   for an over-eager agent, not a guarantee against hostile code.
 

@@ -1,6 +1,6 @@
 """Do ten changes that are each inside the margin of luck add up to a provable gain?
 
-    python3 scripts/bundle_sim.py     # about 30 seconds
+    uv run scripts/bundle_sim.py      # about 30 seconds
 
 Case A: ten REAL small effects. A copy of the town gets ten kinds of local event, each adding
         1.4 MWh on about 10% of days, and the model can add each event calendar as an input.

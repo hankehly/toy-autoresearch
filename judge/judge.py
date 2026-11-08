@@ -5,9 +5,9 @@ a locked container (rooms/model-room) with no internet and no files except model
 The judge passes it notes, one line of JSON at a time, and reveals each day's actual
 load only after the model has sent back its guess for that day.
 
-    python judge/judge.py score val     lab/model.py           # validation, Jul 2024 - Jun 2025: what the agent is graded on
-    python judge/judge.py score holdout lab/model.py           # holdout, Jul - Dec 2025: scored once, at the end
-    python judge/judge.py compare champion.py candidate.py 12  # keep or throw away the 12th idea tested (validation only)
+    uv run judge/judge.py score val     lab/model.py           # validation, Jul 2024 - Jun 2025: what the agent is graded on
+    uv run judge/judge.py score holdout lab/model.py           # holdout, Jul - Dec 2025: scored once, at the end
+    uv run judge/judge.py compare champion.py candidate.py 12  # keep or throw away the 12th idea tested (validation only)
 """
 import json
 import subprocess
