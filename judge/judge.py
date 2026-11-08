@@ -48,8 +48,8 @@ def open_model_sandbox(model_path) -> subprocess.Popen:
     ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 
 
-def tell(sandbox, message) -> None:
-    """Send the sandbox a message. No reply."""
+def send(sandbox, message) -> None:
+    """Send the sandbox a message; don't wait for a reply."""
     try:
         sandbox.stdin.write(json.dumps(message) + "\n")
         sandbox.stdin.flush()
@@ -57,9 +57,9 @@ def tell(sandbox, message) -> None:
         raise RuntimeError(CRASHED) from None
 
 
-def ask(sandbox, message) -> dict:
-    """Send the sandbox a message and wait for its reply."""
-    tell(sandbox, message)
+def request(sandbox, message) -> dict:
+    """Send the sandbox a message and return its reply."""
+    send(sandbox, message)
     reply = sandbox.stdout.readline()
     if not reply:  # the sandbox closed without replying
         raise RuntimeError(CRASHED)
@@ -77,18 +77,19 @@ def daily_misses(model_path, split) -> np.ndarray:
     plus today's date and temperature forecast - never today's load. Each day's load is
     revealed only after the model has guessed it."""
     sandbox = open_model_sandbox(model_path)
-    tell(sandbox, {"op": "reveal", "days": as_rows(DATA[DATA.date < MONTHS[split][0]])})
+    # TODO: What happens when full data is many GBs of information?
+    send(sandbox, {"op": "reveal", "days": as_rows(DATA[DATA.date < MONTHS[split][0]])})
     misses = []
     for start in MONTHS[split]:
-        ask(sandbox, {"op": "fit"})
+        request(sandbox, {"op": "fit"})
         month = DATA[(DATA.date >= start) & (DATA.date < start + pd.offsets.MonthBegin(1))]
         for day in month.itertuples():
-            reply = ask(sandbox, {"op": "predict", "date": f"{day.date:%Y-%m-%d}", "temp_forecast": day.temp_forecast})
+            reply = request(sandbox, {"op": "predict", "date": f"{day.date:%Y-%m-%d}", "temp_forecast": day.temp_forecast})
             guess = float(reply["guess"])
             if not np.isfinite(guess):
                 raise ValueError(f"prediction for {day.date:%Y-%m-%d} is not a number")
             misses.append(abs(day.load - guess))
-            tell(sandbox, {"op": "reveal", "days": as_rows(month[month.date == day.date])})  # only now is today the past
+            send(sandbox, {"op": "reveal", "days": as_rows(month[month.date == day.date])})  # only now is today the past
     sandbox.stdin.close()  # no more messages: the runner finishes and Docker removes the container
     sandbox.wait()
     return np.array(misses)
