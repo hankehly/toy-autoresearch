@@ -1,11 +1,16 @@
 """The frozen judge. The loop calls it; the agent never sees this folder.
 
+The agent's model.py never runs in here, next to the answers. It runs in the model room:
+a locked container (rooms/model-room) with no internet and no files except model.py.
+The judge passes it notes, one line of JSON at a time, and reveals each day's actual
+load only after the model has sent back its guess for that day.
+
     python judge/judge.py score dev   lab/model.py             # Jul 2024 - Jun 2025: what the agent is graded on
     python judge/judge.py score vault lab/model.py             # Jul - Dec 2025: opened once, at the end
     python judge/judge.py compare champion.py candidate.py 12  # keep or throw away the 12th idea tested (dev only)
 """
-import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -22,28 +27,66 @@ RESHUFFLES = 10_000  # how many times we re-deal the weeks
 FLUKE_BUDGET = 0.05  # the k-th idea tested must win at least 1 - 5%/k of the re-deals
 
 
-def load_model(path):
-    spec = importlib.util.spec_from_file_location(Path(path).stem, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+CRASHED = "model.py crashed or ran out of time (its error, if any, is printed above)"
+
+
+def open_model_room(model_path):
+    """Start a model room for model_path. The judge talks to it through stdin and stdout."""
+    return subprocess.Popen([
+        "docker", "run", "--rm", "-i", "--pull", "never",
+        "--network", "none",                                          # no internet
+        "--read-only", "--tmpfs", "/tmp",                             # can't change any file; /tmp vanishes afterwards
+        "--user", "65534:65534",                                      # runs as "nobody", not as you
+        "--cap-drop", "ALL", "--security-opt", "no-new-privileges",  # can't give itself extra powers
+        "--memory", "2g", "--cpus", "2", "--pids-limit", "64",        # can't hog your Mac
+        "-v", f"{Path(model_path).resolve()}:/room/model.py:ro",      # its one file, read-only
+        "toy-model-room",
+    ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+
+
+def tell(room, note):
+    """Pass the room a note. No reply."""
+    try:
+        room.stdin.write(json.dumps(note) + "\n")
+        room.stdin.flush()
+    except BrokenPipeError:  # the room has already closed
+        raise RuntimeError(CRASHED) from None
+
+
+def ask(room, note):
+    """Pass the room a note and wait for its reply."""
+    tell(room, note)
+    reply = room.stdout.readline()
+    if not reply:  # the room closed without replying
+        raise RuntimeError(CRASHED)
+    return json.loads(reply)
+
+
+def as_rows(days):
+    """Days as plain rows that a note can carry: date, temp_forecast, load."""
+    return days.assign(date=days.date.dt.strftime("%Y-%m-%d")).to_dict("records")
 
 
 def daily_misses(model_path, split):
     """Walk forward one month at a time, like real life.
-    fit() sees only days before the month. predict() sees only days before today,
-    plus today's date and temperature forecast - never today's load."""
-    model = load_model(model_path)
+    fit() learns from every day before the month. predict() sees every day before today,
+    plus today's date and temperature forecast - never today's load. Each day's load is
+    revealed only after the model has guessed it."""
+    room = open_model_room(model_path)
+    tell(room, {"op": "reveal", "days": as_rows(DATA[DATA.date < MONTHS[split][0]])})
     misses = []
     for start in MONTHS[split]:
-        state = model.fit(DATA[DATA.date < start].copy())
+        ask(room, {"op": "fit"})
         month = DATA[(DATA.date >= start) & (DATA.date < start + pd.offsets.MonthBegin(1))]
         for day in month.itertuples():
-            today = {"date": day.date, "temp_forecast": day.temp_forecast}
-            pred = float(model.predict(state, DATA[DATA.date < day.date].copy(), today))
-            if not np.isfinite(pred):
+            reply = ask(room, {"op": "predict", "date": f"{day.date:%Y-%m-%d}", "temp_forecast": day.temp_forecast})
+            guess = float(reply["guess"])
+            if not np.isfinite(guess):
                 raise ValueError(f"prediction for {day.date:%Y-%m-%d} is not a number")
-            misses.append(abs(day.load - pred))
+            misses.append(abs(day.load - guess))
+            tell(room, {"op": "reveal", "days": as_rows(month[month.date == day.date])})  # only now is today the past
+    room.stdin.close()  # no more notes: the runner finishes and Docker removes the container
+    room.wait()
     return np.array(misses)
 
 

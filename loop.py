@@ -8,6 +8,7 @@
     python loop.py run 5     # five more turns (continues from the ledger)
     python loop.py vault     # open the vault once, at the end: Jul - Dec 2025
     python loop.py reset     # back to the baseline
+    python loop.py build     # build the rooms' Docker images (run and vault do this first anyway)
 """
 import json
 import re
@@ -22,6 +23,7 @@ ROOT = Path(__file__).parent.resolve()
 LAB, JUDGE, HISTORY = ROOT / "lab", ROOT / "judge", ROOT / "history"
 LEDGER = LAB / "ledger.tsv"
 AGENT_FILES = ["program.md", "model.py", "check.py", "data.csv", "ledger.tsv"]
+ROOMS = ["model-room"]  # folders in rooms/, each built as the Docker image toy-<name>
 
 PROMPT = ("Read program.md, then ledger.tsv, then model.py. Make your one change to model.py, "
           "run check.py with python, and fix model.py if it crashes. "
@@ -31,6 +33,13 @@ AGENT = ["claude", "-p", PROMPT,
          "--permission-mode", "acceptEdits",            # may edit files in its own workspace only
          "--allowedTools", "Bash(python *),Bash(python3 *)",  # and run python; anything else is refused
          "--output-format", "json"]
+
+
+def build():
+    """Build the rooms' Docker images. Quick when nothing has changed: Docker reuses its cache."""
+    for name in ROOMS:
+        subprocess.run(["docker", "build", "--quiet", "-t", f"toy-{name}", str(ROOT / "rooms" / name)],
+                       check=True, stdout=subprocess.DEVNULL)
 
 
 def judge(*args):
@@ -116,13 +125,17 @@ def reset():
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
-    if cmd == "run":
+    if cmd == "build":
+        build()
+    elif cmd == "run":
+        build()
         if not LEDGER.exists():
             start()
         last = int(read_ledger()[-1]["turn"])
         for t in range(last + 1, last + 1 + int(sys.argv[2] if len(sys.argv) > 2 else 5)):
             turn(t)
     elif cmd == "vault":
+        build()
         vault()
     elif cmd == "reset":
         reset()
