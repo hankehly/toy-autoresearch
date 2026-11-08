@@ -8,11 +8,16 @@ The smallest working version of an agent research loop, with guards against over
     loop.py     each turn: fresh workspace -> fresh agent makes one change ->
                 judge compares -> keep or throw away -> ledger
     history/    every model the agent wrote, plus its reply and cost per turn
+    rooms/      the locked rooms (Docker containers), see "The three rooms" below:
+                model-room     where judge.py runs model.py: no internet, no files but model.py
+                agent-room     where the agent works: it sees only the turn's workspace
+                agent-door     the agent room's only way out: a proxy that lets through Claude's API alone
     scripts/    helpers outside the main loop:
+                test_rooms.py  proves the rooms' walls hold (about 30 seconds)
                 make_data.py   rebuilds the fake town (seeded, so you get the same data)
                 night_sim.py   simulates whole nights of 300 ideas and checks every keep against the truth
                 bundle_sim.py  tests whether small changes add up when submitted together
-    docs/       the diagram below
+    docs/       the diagrams below
 
 ## One turn of the loop
 
@@ -32,10 +37,16 @@ history, June 2025 from 29.
 
 ## Run it
 
+Needs Docker Desktop (running) and Claude Code.
+
     pip install numpy pandas scipy
-    python loop.py run 5      # five agent turns; needs Claude Code installed and logged in
-    python loop.py vault      # open the vault once, at the end
-    python loop.py reset      # start over from the baseline
+    python loop.py build          # build the rooms (run and vault also do this first)
+    python scripts/test_rooms.py  # check that the walls hold (about 30 seconds)
+    claude setup-token            # once: a login token the agent room can use
+    export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>
+    python loop.py run 5          # five agent turns
+    python loop.py vault          # open the vault once, at the end
+    python loop.py reset          # start over from the baseline
     python scripts/night_sim.py   # the overnight experiment, no agent needed (about 5 minutes)
 
 The ledger and history/ in this folder are from the example run below (agent: Claude Sonnet
@@ -83,9 +94,29 @@ Whole weeks are re-dealt together because neighbouring days share weather.
 3. The vault is opened once. If you change things because of what it says, it becomes
    another dev set, so then you need fresh months to check on.
 
-## The lock is a toy lock
+## The three rooms
 
-The agent works in a throwaway copy of lab/ and can only edit files there, and only
-model.py is copied back. But Python can still open any file on the machine, so this
-lock is a filter, not a wall. For real work, run the judge and the vault in a separate
-container or machine (or turn on Claude Code's sandbox).
+![The agent room, the host and the model room side by side, with the only four things that cross their walls: the lab files in, model.py out, notes in, one guess per day out](docs/three-rooms.drawio.png)
+
+Walls, not instructions, keep the agent's code away from the answers:
+
+- **The host** (your Mac) runs only code a human wrote, `loop.py` and `judge.py`, and holds
+  all the data, the vault included.
+- **The agent room** is a container that sees only the turn's workspace. Its network has one
+  way out, the door: a proxy that lets through Claude's API and refuses everything else. The
+  agent's web tools are off, and only a plain `model.py` comes back from the room.
+- **The model room** is where the judge runs `model.py`: a container with no internet, no
+  writable files, and nothing from your Mac except `model.py` itself, read-only. The judge
+  passes it notes, one line of JSON at a time, and reveals each day's load only after the
+  model has guessed it.
+
+Before the rooms, the judge ran `model.py` in its own process, so a 6-line model could read
+today's answer from the judge's variables. It was kept, and the vault agreed with it.
+`python scripts/test_rooms.py` now runs four such cheats and checks that each one crashes.
+
+The door stays up after a run, and its log shows everything the agent tried to reach:
+
+    docker exec toy-agent-door cat /var/log/squid/access.log
+
+What the rooms don't fix: the ledger still shows the agent each rejected idea's dev score,
+and Docker is a strong fence for an over-eager agent, not a guarantee against hostile code.

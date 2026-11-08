@@ -17,6 +17,13 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
   reads `program.md` and `ledger.tsv`, changes only `model.py`, and checks it with `check.py`.
   Only `model.py` comes back. `judge/judge.py` compares it with the champion, and it is kept
   or thrown away and logged in `lab/ledger.tsv`.
+- Three rooms (`rooms/`, Docker). The host runs only code a human wrote (`loop.py`,
+  `judge.py`) and holds all the data. The agent works in the agent room, a container that
+  sees only the turn's temp folder; its network's only way out is the door, a squid proxy
+  that lets through api.anthropic.com alone. The judge runs `model.py` in the model room
+  (no network, read-only, nothing but `model.py`) and talks to it in one-line JSON notes
+  (reveal, fit, predict), revealing each day's load only after the guess.
+  `scripts/test_rooms.py` proves the walls hold.
 - Months. Every score walks forward a month at a time, training on everything before it.
   Jan-Jun 2023: warm-up. Jul 2023-Jun 2024: the agent's practice year.
   Jul 2024-Jun 2025: the judge's scored year (dev); the agent never has it.
@@ -60,6 +67,11 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
    the square root. Ten noise near-misses picked on the scored year, bundled, cleared the bar
    45% of the time while truly 0.025 worse; picked on the practice year, 0%.
    Pick the pieces on data the final test doesn't use.
+7. Before the rooms, the judge ran `model.py` in its own process, next to the answers. A
+   6-line model that read today's load from the judge's loop variable was kept as the 6th
+   idea (won 100%; dev 2.14 and vault 2.06 with noise added, 0.00 without), and it passed
+   `check.py`. The vault agreed, so every statistical guard failed at once. Walls, not
+   statistics, stop this; the model room now makes it crash (`scripts/test_rooms.py`).
 
 ## Open threads
 - Allow practice-year bundles: let the agent submit several ideas that each helped on its
@@ -75,11 +87,17 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
 - Python 3 with numpy, pandas and scipy (`scripts/night_sim.py` and `scripts/bundle_sim.py` need scipy).
 - `scripts/` holds helpers outside the main loop (`make_data.py`, the simulations). Run them from the repo root.
   Use `python3` on macOS.
-- `loop.py` calls `claude -p --model sonnet`, so Claude Code must be installed and logged in.
-  Our agent turns cost about $0.11-0.16 each (Claude Code's own estimate).
+- Docker Desktop must be running. `python3 loop.py build` builds the three images (`run` and
+  `vault` do it first anyway); `python3 scripts/test_rooms.py` checks the walls (about 30 s).
+- The agent room can't use the Mac's Keychain login, so `loop.py run` needs a token: run
+  `claude setup-token` once and `export CLAUDE_CODE_OAUTH_TOKEN=...` in the shell. The room
+  runs `claude -p --model sonnet` with Claude Code 2.1.319. Our agent turns cost about
+  $0.11-0.16 each (Claude Code's own estimate).
+- The door stays up after a run; `docker exec toy-agent-door cat /var/log/squid/access.log`
+  shows everything the agent tried to reach.
 - `python3 loop.py reset` returns to the baseline and clears the ledger and history.
-- The lock is a toy lock: the agent's Python could read `judge/` on this machine. For real
-  work, run the judge and the vault in a separate container.
+- If you change a room or the notes, run `scripts/test_rooms.py`. Docker is a strong fence
+  for an over-eager agent, not a guarantee against hostile code.
 
 ## How Hank likes explanations
 When using math or formulas, give a plain-English interpretation, a small numeric example
