@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 
 DATA = pd.read_csv(Path(__file__).parent / "full_data.csv", parse_dates=["date"])
+
+# TODO: Static date ranges. What to do as time passes and new data added?
 MONTHS = {
     "val": pd.date_range("2024-07-01", "2025-06-01", freq="MS"),      # validation: decides what's kept
     "holdout": pd.date_range("2025-07-01", "2025-12-01", freq="MS"),  # holdout: scored once, at the end
