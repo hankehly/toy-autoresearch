@@ -94,7 +94,8 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
   runs `claude -p --model sonnet` with Claude Code 2.1.319. Our agent turns cost about
   $0.11-0.16 each (Claude Code's own estimate).
 - The door stays up after a run; `docker exec toy-agent-door cat /var/log/squid/access.log`
-  shows everything the agent tried to reach.
+  lists every request the agent sent through it, until the next run or test run replaces
+  the door. Attempts to go around the door fail without a trace.
 - `python3 loop.py reset` returns to the baseline and clears the ledger and history.
 - If you change a room or the notes, run `scripts/test_rooms.py`. Docker is a strong fence
   for an over-eager agent, not a guarantee against hostile code.

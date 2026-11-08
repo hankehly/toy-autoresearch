@@ -167,6 +167,11 @@ check("without a login token, run stops and says how to get one",
 # --- The agent room: its only way out is the door, open to Claude's API alone --------
 # The probe runs inside the very room the agent gets: loop.agent_room().
 
+# A leftover network with a way out (made by hand, say) must not survive open_door().
+subprocess.run(["docker", "rm", "--force", loop.DOOR], capture_output=True)
+subprocess.run(["docker", "network", "rm", loop.NETWORK], capture_output=True)
+subprocess.run(["docker", "network", "create", loop.NETWORK], check=True, stdout=subprocess.DEVNULL)
+
 loop.open_door()
 loop.open_door()  # a door left over from an earlier run is replaced, not tripped over
 

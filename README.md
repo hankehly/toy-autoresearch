@@ -114,7 +114,9 @@ Before the rooms, the judge ran `model.py` in its own process, so a 6-line model
 today's answer from the judge's variables. It was kept, and the vault agreed with it.
 `python scripts/test_rooms.py` now runs four such cheats and checks that each one crashes.
 
-The door stays up after a run, and its log shows everything the agent tried to reach:
+The door stays up after a run. Its log lists every request the agent sent through it, until
+the next run or test run starts a fresh door. Attempts to go around the door simply fail,
+and leave no trace there.
 
     docker exec toy-agent-door cat /var/log/squid/access.log
 

@@ -60,10 +60,13 @@ def need_login_token():
 
 def open_door():
     """Open the door: the only way out of the agent room's network, and it leads to Claude's
-    API alone. It stays open after a run, so you can see everything the agent tried to reach:
+    API alone. It stays open after a run, and its log lists every request the agent sent
+    through it (the next run or test starts a fresh door, with an empty log):
         docker exec toy-agent-door cat /var/log/squid/access.log"""
     subprocess.run(["docker", "rm", "--force", DOOR], capture_output=True)  # remove an old door, if any
-    subprocess.run(["docker", "network", "create", "--internal", NETWORK], capture_output=True)  # fine if it exists
+    subprocess.run(["docker", "network", "rm", NETWORK], capture_output=True)  # and an old network, however it was made
+    subprocess.run(["docker", "network", "create", "--internal", NETWORK],  # --internal: no way out of it but the door
+                   check=True, stdout=subprocess.DEVNULL)
     subprocess.run(["docker", "run", "--detach", "--name", DOOR, "--network", NETWORK, "toy-agent-door"],
                    check=True, stdout=subprocess.DEVNULL)
     subprocess.run(["docker", "network", "connect", "bridge", DOOR], check=True)  # the door's other side: the internet
