@@ -5,3 +5,4 @@ turn	idea	val_mae	win_pct	bar_pct	decision
 3	Add yesterday's heating/cooling degrees as extra regression features	2.893	67.91	98.33	thrown away
 4	Shift heating/cooling thresholds to 18C and 22C	2.975	8.66	98.75	thrown away
 5	Add yesterday's residual (AR(1)) correction to regression	2.914	61.92	99.0	thrown away
+6	Add yearly seasonal sine/cosine terms to the regression	2.921	28.97	99.17	thrown away

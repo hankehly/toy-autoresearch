@@ -1,0 +1,6 @@
+{
+  "idea": "Add yearly seasonal sine/cosine terms to the regression",
+  "seconds": 18,
+  "cost_usd": 0.059999,
+  "agent_reply": "I added yearly seasonal terms (sine and cosine of day of year) to the regression in `model.py`. `check.py` ran on 61 days without crashing. I didn't score the change on the practice year, so I don't know whether it helps. The ledger's current best is 2.915 MAE.\n\nIDEA: Add yearly seasonal sine/cosine terms to the regression"
+}
