@@ -131,9 +131,13 @@ def start() -> None:
 
 
 def turn(t) -> None:
+    """One turn of the loop: steps 1-4 at the top of this file."""
+    # 1. copy the lab files into a fresh, empty workspace (a new temp folder)
     work = Path(tempfile.mkdtemp(prefix=f"agent-turn{t}-"))
     for name in AGENT_FILES:
         shutil.copy(LAB / name, work / name)
+
+    # 2. the agent changes model.py in the agent sandbox, and ends its reply with "IDEA: ..."
     began = time.time()
     run = subprocess.run(agent_sandbox(work) + AGENT, capture_output=True, text=True)
     try:
@@ -142,6 +146,8 @@ def turn(t) -> None:
         reply = {"result": run.stdout[-1000:] + run.stderr[-1000:]}
     found = re.findall(r"IDEA:\s*(.+)", reply.get("result") or "")
     idea = found[-1].strip().strip("*").replace("\t", " ") if found else "(no description)"
+
+    # 3. bring back model.py, delete the workspace, and save the turn in history/
     candidate = HISTORY / f"turn_{t}.py"
     submitted = copy_submission(work, candidate)  # only model.py comes back
     shutil.rmtree(work)
@@ -149,14 +155,19 @@ def turn(t) -> None:
         "idea": idea, "seconds": round(time.time() - began),
         "cost_usd": reply.get("total_cost_usd"), "agent_reply": reply.get("result")}, indent=2))
 
+    # skip the judge if the agent sent back nothing new
     if not submitted:
         log(t, idea, "-", "-", "-", "no model.py")  # nothing to judge, so it doesn't count as a try
         return
     if candidate.read_text() == (LAB / "model.py").read_text():
         log(t, idea, "-", "-", "-", "no change")  # nothing submitted, so it doesn't count as a try
         return
+
+    # the judge compares it with the champion on the validation year; the bar rises with k
     k = 1 + sum(r["decision"] in ("KEPT", "thrown away") for r in read_ledger())  # this is the k-th idea tested
     verdict = judge("compare", LAB / "model.py", candidate, k)
+
+    # 4. keep it (new champion) or throw it away, and write the verdict into ledger.tsv
     if "error" in verdict:
         log(t, idea, "-", "-", "-", "crashed")
     elif verdict["keep"]:
