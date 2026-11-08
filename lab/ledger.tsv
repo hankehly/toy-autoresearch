@@ -6,3 +6,4 @@ turn	idea	val_mae	win_pct	bar_pct	decision
 4	Shift heating/cooling thresholds to 18C and 22C	2.975	8.66	98.75	thrown away
 5	Add yesterday's residual (AR(1)) correction to regression	2.914	61.92	99.0	thrown away
 6	Add yearly seasonal sine/cosine terms to the regression	2.921	28.97	99.17	thrown away
+7	Fit by least absolute deviations instead of least squares	-	-	-	no change

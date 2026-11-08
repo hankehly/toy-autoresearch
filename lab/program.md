@@ -11,7 +11,8 @@ for a made-up town of about 10,000 homes.
 - `data.csv`: Jan 2023 - Jun 2024 (date, temp_forecast, load). Explore it freely.
 - `model.py`: the current best model. You change this file, and only this file.
 - `ledger.tsv`: every experiment so far and its verdict. "no change" means the idea was
-  dropped after its practice test.
+  dropped after its practice test. Its scores are from the judge's year, which has more
+  history to learn from, so your practice scores will usually be a little higher.
 - `check.py`: tells you if model.py crashes. It does not score it.
 
 ## How you're judged

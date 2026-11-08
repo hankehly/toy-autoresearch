@@ -62,12 +62,14 @@ via `claude -p`; change the model in loop.py). `uv run loop.py reset` clears the
     4     move thresholds to 18 / 22 C                2.98   9%     98.8%   thrown away
     5     correct with yesterday's error              2.91   62%    99%     thrown away
     6     add yearly sine/cosine terms                2.92   29%    99.2%   thrown away
+    7     fit by least absolute deviations            -      -      -       no change
           answer key (the exact recipe)               2.83                                2.77
 
 Checked afterwards on 50 parallel towns: turns 2, 4 and 5 were truly no better, so the
 judge was right. Turn 3 was truly better by 0.04 MWh, but one scored year was too small
 to prove it, so both the old and the new rule threw it out. Small exams miss small gains.
-Turn 6 came later: the first turn run inside the sandboxes (see "Isolation").
+Turns 6 and 7 came later, inside the sandboxes (see "Isolation"). Turn 7 found its idea
+worse on the practice year and dropped it, so it didn't count as a try.
 
 ## What night_sim.py found (10 nights of 300 ideas each, MWh)
 

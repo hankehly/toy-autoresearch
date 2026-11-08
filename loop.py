@@ -36,7 +36,7 @@ PROXY = "toy-agent-proxy"  # the proxy's container: squid, which lets through Cl
 # TODO: How much better on the practice year is "clearly better" (program.md, step 6)? No fixed
 # number fits every idea; a practice.py running the judge's reshuffle test could answer it.
 PROMPT = ("Read program.md and follow its steps. "
-          "Your last line must be: IDEA: <your idea in under 12 words>")
+          "Your last line must be: IDEA: <the idea you tried, in under 12 words>")
 AGENT = ["timeout", "1800",                         # a turn still running after 30 minutes is stopped
          "claude", "-p", PROMPT,
          "--model", "sonnet",
