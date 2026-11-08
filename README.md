@@ -110,6 +110,14 @@ Isolation, not instructions, keeps the agent's code away from the answers:
   sends it messages, one line of JSON at a time, and reveals each day's load only after the
   model has guessed it.
 
+The networks behind this: a container can reach only what's on the networks it's plugged
+into. The agent sandbox is plugged into one internal network, whose only other member is the
+proxy. The proxy is also plugged into Docker's default network, which leads to the internet.
+`HTTPS_PROXY` tells Claude Code to send its requests to the proxy; anything that ignores it
+finds no route out.
+
+![The agent sandbox sits on an internal network with the proxy; the proxy is also on Docker's bridge network and lets through only api.anthropic.com; the model sandbox has no network and talks to the judge through stdin and stdout](docs/networks.drawio.png)
+
 Before the sandboxes, the judge ran `model.py` in its own process, so a 6-line model could
 read today's answer from the judge's variables. It was kept, and the holdout agreed with it.
 `uv run scripts/test_sandboxes.py` now runs four such cheats and checks that each one crashes.
