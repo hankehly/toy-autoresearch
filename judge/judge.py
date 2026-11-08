@@ -26,6 +26,8 @@ MONTHS = {
 }
 WEEKS = 52           # the 365 scored days, in 7-day blocks (the last block has 8)
 RESHUFFLES = 10_000  # how many times we re-deal the weeks
+
+# TODO: Where does this threshold come from? Was it used by a related project?
 FLUKE_BUDGET = 0.05  # the k-th idea tested must win at least 1 - 5%/k of the re-deals
 
 
