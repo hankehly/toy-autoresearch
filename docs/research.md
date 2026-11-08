@@ -29,7 +29,7 @@ brackets (see the list at the end); the design advice is our synthesis of them.
    (brief, ledger summary, code), one hypothesis, an evaluator run, the acceptance rule,
    commit or revert, a Decision written. The agent never grades its own work.
    (autoresearch has no orchestration script; its agent manages the loop itself.)
-4. Three gates: dev folds, where the agent sees scores; a vault of the most recent months,
+4. Three gates: validation folds, where the agent sees scores; a holdout of the most recent months,
    whose data and scores the agent never sees, checked only at milestones; and shadow mode,
    where predictions are logged before the outcomes exist.
 5. Order of work: load forecasting first (less noise, strong baselines, fresh outcomes every
@@ -39,7 +39,7 @@ brackets (see the list at the end); the design advice is our synthesis of them.
    tries mean more lucky winners. Skip Kaggle-style frameworks (R&D-Agent, AIDE): they are
    built for one-off competitions, and the domain-specific evaluator is what matters most.
 The toy implements 1-4 in miniature: `lab/program.md` (brief), `judge/` (frozen evaluator that
-calls fit/predict), `loop.py` (orchestrator), the vault (gate 2).
+calls fit/predict), `loop.py` (orchestrator), the holdout (gate 2).
 
 ## The five big pitfalls
 1. Leakage: the cheapest way to improve a metric, so an agent will find it.
@@ -61,7 +61,7 @@ calls fit/predict), `loop.py` (orchestrator), the vault (gate 2).
      hidden-test performance often plateaued or regressed [6].
    - Fixes: measure the noise floor first by rerunning the baseline across seeds. Accept only
      gains well above it that win on most folds and survive a rerun. Keep the agent away from
-     the vault. Reproduction check: give a fresh agent with no validation access only a short
+     the holdout. Reproduction check: give a fresh agent with no validation access only a short
      description of the winning idea; gains that came from validation quirks fail to
      reproduce [7]. The toy adds the rising bar, week reshuffles and a hidden scored year.
 3. Reward hacking.
@@ -73,19 +73,19 @@ calls fit/predict), `loop.py` (orchestrator), the vault (gate 2).
      valid. Integrity problems (metric hacking, shortcuts, overclaiming) were the largest
      category, 33.5% of 12,712 failure-pattern hits [5].
    - Fixes must be structural, not instructions: read-only data mounts; write access only to
-     the agent's own files; no route to the evaluator or vault except through the orchestrator;
+     the agent's own files; no route to the evaluator or holdout except through the orchestrator;
      evaluator code kept out of the agent's workspace (document the interface only); a second
      agent reviews every accepted change for leakage; unusually large jumps are flagged; read
      the ledger, never the agent's own summary.
    - Claude Code: `claude -p` runs headless; `--allowedTools` and `--permission-mode` limit
      tools [13, 14], but Read deny rules let 4 of 11 tested routes through, including `grep -r`
-     and a Python one-liner [15]. Put the judge and vault in a separate container or machine.
+     and a Python one-liner [15]. Put the judge and holdout in a separate container or machine.
 4. A noisy or wrong objective.
    - Racing ROI is mostly luck at realistic sample sizes: at odds of 10.0 a bet swings about
      3 units, so 1,000 bets leave about 9.5 points of ROI luck, and one JRA year (about 3,450
      races [18]) about 5 points.
    - Optimize how much the model's log loss beats the market's implied probabilities (Benter's
-     approach); check ROI only in the vault and in shadow mode.
+     approach); check ROI only on the holdout and in shadow mode.
    - Load: MAPE is fine to start. If the forecast drives procurement or imbalance costs, score
      errors in yen, because peak-hour misses cost more.
 5. Shallow search and complexity creep.
@@ -95,12 +95,15 @@ calls fit/predict), `loop.py` (orchestrator), the vault (gate 2).
      periodic removal passes (delete a component; keep the deletion if the score holds).
      Strategies that can be described compactly tend to generalize [7].
 
-## Reusing a holdout without overfitting it (for the ledger leak)
+## Reusing a validation set without overfitting it (for the ledger leak)
+The papers call it a holdout; here it is the validation year, whose scores reach the agent
+through the ledger.
+
 - The Ladder [16]: release a new leaderboard score only when a submission beats the previous
   best by a statistically meaningful margin (the parameter-free version uses a one-sided paired
   t-test); otherwise repeat the previous best, and round scores. This limits what repeated
-  feedback reveals about the holdout.
-- The reusable holdout [17]: access the holdout only through a differentially private
+  feedback reveals about the validation set.
+- The reusable holdout [17]: access the validation set only through a differentially private
   mechanism, so it stays valid across many adaptive analyses.
 
 ## Sources

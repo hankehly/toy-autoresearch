@@ -40,10 +40,10 @@ def write_model(name, code):
     return path
 
 
-def dev_score(model_path):
-    """The model's average miss on the dev year, or the error that stopped it."""
+def val_score(model_path):
+    """The model's average miss on the validation year, or the error that stopped it."""
     try:
-        return round(float(judge.daily_misses(model_path, "dev").mean()), 3)
+        return round(float(judge.daily_misses(model_path, "val").mean()), 3)
     except Exception as error:
         return error
 
@@ -76,7 +76,7 @@ honest = [
     ("answer key", ROOT / "judge" / "answer_key.py", 2.830),
 ]
 for name, path, old_score in honest:
-    score = dev_score(path)
+    score = val_score(path)
     check(f"scores as before: {name}", score == old_score, f"got {score!r}, the old judge gave {old_score}")
 
 
@@ -133,7 +133,7 @@ def predict(state, history, today):
 ''',
 }
 for i, (name, code) in enumerate(cheats.items()):
-    result = dev_score(write_model(f"cheat{i}", code))
+    result = val_score(write_model(f"cheat{i}", code))
     check(f"cheat is stopped: {name}", isinstance(result, RuntimeError), f"got {result!r}")
 
 

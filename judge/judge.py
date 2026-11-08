@@ -5,9 +5,9 @@ a locked container (rooms/model-room) with no internet and no files except model
 The judge passes it notes, one line of JSON at a time, and reveals each day's actual
 load only after the model has sent back its guess for that day.
 
-    python judge/judge.py score dev   lab/model.py             # Jul 2024 - Jun 2025: what the agent is graded on
-    python judge/judge.py score vault lab/model.py             # Jul - Dec 2025: opened once, at the end
-    python judge/judge.py compare champion.py candidate.py 12  # keep or throw away the 12th idea tested (dev only)
+    python judge/judge.py score val     lab/model.py           # validation, Jul 2024 - Jun 2025: what the agent is graded on
+    python judge/judge.py score holdout lab/model.py           # holdout, Jul - Dec 2025: scored once, at the end
+    python judge/judge.py compare champion.py candidate.py 12  # keep or throw away the 12th idea tested (validation only)
 """
 import json
 import subprocess
@@ -19,8 +19,8 @@ import pandas as pd
 
 DATA = pd.read_csv(Path(__file__).parent / "full_data.csv", parse_dates=["date"])
 MONTHS = {
-    "dev": pd.date_range("2024-07-01", "2025-06-01", freq="MS"),
-    "vault": pd.date_range("2025-07-01", "2025-12-01", freq="MS"),
+    "val": pd.date_range("2024-07-01", "2025-06-01", freq="MS"),      # validation: decides what's kept
+    "holdout": pd.date_range("2025-07-01", "2025-12-01", freq="MS"),  # holdout: scored once, at the end
 }
 WEEKS = 52           # the 365 scored days, in 7-day blocks (the last block has 8)
 RESHUFFLES = 10_000  # how many times we re-deal the weeks
@@ -96,8 +96,8 @@ def compare(champion_path, candidate_path, k):
     The k-th idea tested is kept only if its average miss is lower in at least 1 - 5%/k
     of the re-deals: 95% for the 1st, 99.5% for the 10th, 99.95% for the 100th.
     Over a whole night, that keeps the expected number of lucky keeps under one."""
-    old = daily_misses(champion_path, "dev")
-    new = daily_misses(candidate_path, "dev")
+    old = daily_misses(champion_path, "val")
+    new = daily_misses(candidate_path, "val")
     week = np.minimum(np.arange(len(old)) // 7, WEEKS - 1)
     gaps = np.bincount(week, weights=new - old, minlength=WEEKS)
     days = np.bincount(week, minlength=WEEKS)

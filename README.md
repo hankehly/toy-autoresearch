@@ -4,7 +4,7 @@ The smallest working version of an agent research loop, with guards against over
 
     lab/        the only things the agent sees: program.md (your brief), model.py,
                 data.csv (Jan 2023 - Jun 2024), ledger.tsv, check.py
-    judge/      the frozen judge, the full data and the vault
+    judge/      the frozen judge, the full data and the holdout
     loop.py     each turn: fresh workspace -> fresh agent makes one change ->
                 judge compares -> keep or throw away -> ledger
     history/    every model the agent wrote, plus its reply and cost per turn
@@ -28,8 +28,8 @@ The diagram is a `.drawio.png`: it displays as an image and also opens for editi
 ## Who sees which months
 
     Jan-Jun 2023   Jul 2023-Jun 2024   Jul 2024-Jun 2025    Jul-Dec 2025
-    warm-up        agent's practice    judge's exam (dev)   vault
-    <------ agent has these ------->   agent never sees     opened once, at the end
+    training       agent's practice    judge's validation   holdout
+    <------ agent has these ------->   agent never sees     scored once, at the end
 
 Every score walks forward a month at a time: the model is trained on everything before
 the month, then predicts each day of it. So July 2024 is predicted from 18 months of
@@ -40,12 +40,12 @@ history, June 2025 from 29.
 Needs Docker Desktop (running) and Claude Code.
 
     pip install numpy pandas scipy
-    python loop.py build          # build the rooms (run and vault also do this first)
+    python loop.py build          # build the rooms (run and holdout also do this first)
     python scripts/test_rooms.py  # check that the walls hold (about 30 seconds)
     claude setup-token            # once: a login token the agent room can use
     export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>
     python loop.py run 5          # five agent turns
-    python loop.py vault          # open the vault once, at the end
+    python loop.py holdout        # score the holdout once, at the end
     python loop.py reset          # start over from the baseline
     python scripts/night_sim.py   # the overnight experiment, no agent needed (about 5 minutes)
 
@@ -54,7 +54,7 @@ via `claude -p`; change the model in loop.py). `python loop.py reset` clears the
 
 ## The example run (average miss per day, MWh; lower is better)
 
-    turn  idea                                        dev    won    needed  verdict      vault
+    turn  idea                                        val    won    needed  verdict      holdout
     0     average of the last 7 days                  5.78   -      -       start        5.82
     1     weekday + heating/cooling regression        2.92   100%   95%     KEPT         2.75
     2     model log(load) instead of load             2.94   10%    97.5%   thrown away
@@ -91,8 +91,8 @@ Whole weeks are re-dealt together because neighbouring days share weather.
 
 1. The agent never has the answers for the year it's graded on, so it can't tune on it.
 2. The bar rises with the number of tries, so a long night can't win by sheer volume.
-3. The vault is opened once. If you change things because of what it says, it becomes
-   another dev set, so then you need fresh months to check on.
+3. The holdout is scored once. If you change things because of what it says, it becomes
+   another validation set, so then you need fresh months to check on.
 
 ## The three rooms
 
@@ -101,7 +101,7 @@ Whole weeks are re-dealt together because neighbouring days share weather.
 Walls, not instructions, keep the agent's code away from the answers:
 
 - **The host** (your Mac) runs only code a human wrote, `loop.py` and `judge.py`, and holds
-  all the data, the vault included.
+  all the data, the holdout included.
 - **The agent room** is a container that sees only the turn's workspace. Its network has one
   way out, the door: a proxy that lets through Claude's API and refuses everything else. The
   agent's web tools are off, and only a plain `model.py` comes back from the room.
@@ -111,7 +111,7 @@ Walls, not instructions, keep the agent's code away from the answers:
   model has guessed it.
 
 Before the rooms, the judge ran `model.py` in its own process, so a 6-line model could read
-today's answer from the judge's variables. It was kept, and the vault agreed with it.
+today's answer from the judge's variables. It was kept, and the holdout agreed with it.
 `python scripts/test_rooms.py` now runs four such cheats and checks that each one crashes.
 
 The door stays up after a run. Its log lists every request the agent sent through it, until
@@ -120,5 +120,5 @@ and leave no trace there.
 
     docker exec toy-agent-door cat /var/log/squid/access.log
 
-What the rooms don't fix: the ledger still shows the agent each rejected idea's dev score,
+What the rooms don't fix: the ledger still shows the agent each rejected idea's validation score,
 and Docker is a strong fence for an over-eager agent, not a guarantee against hostile code.

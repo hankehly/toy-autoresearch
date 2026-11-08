@@ -56,10 +56,10 @@ def case_a(worlds=100):
     rows = []
     for u in range(worlds):
         w = EventTown(1000 + u)
-        base = S.errors(S.BEST, w, S.DEV)
+        base = S.errors(S.BEST, w, S.VAL)
         for jid in EVENTS:
-            rows.append(("one real change", *compare(base, S.errors(dict(S.BEST, junk=(jid,)), w, S.DEV))))
-        rows.append(("ten real, bundled", *compare(base, S.errors(dict(S.BEST, junk=EVENTS), w, S.DEV))))
+            rows.append(("one real change", *compare(base, S.errors(dict(S.BEST, junk=(jid,)), w, S.VAL))))
+        rows.append(("ten real, bundled", *compare(base, S.errors(dict(S.BEST, junk=EVENTS), w, S.VAL))))
     df = pd.DataFrame(rows, columns=["what", "gain", "luck", "clears"])
     return df.groupby("what", sort=False).mean()
 
@@ -68,7 +68,7 @@ def near_miss_bundle(world, pick_on, first_id, truth_towns):
     """Collect 10 near-misses: the best of 7 noise inputs versus the best model, chosen on
     `pick_on`. When picking on the scored year, keep only ones that look better there but
     don't clear the bar. Then score the bundle of all 10 on the scored year and in truth."""
-    base_dev = S.errors(S.BEST, world, S.DEV)
+    base_val = S.errors(S.BEST, world, S.VAL)
     base_pick = S.errors(S.BEST, world, pick_on).mean()
     chosen, next_id = [], first_id
     while len(chosen) < 10:
@@ -78,14 +78,14 @@ def near_miss_bundle(world, pick_on, first_id, truth_towns):
         if min(scores) >= base_pick:
             continue  # nothing looked better: nothing submitted
         j = ids[int(np.argmin(scores))]
-        gain, luck, clears = compare(base_dev, S.errors(dict(S.BEST, junk=(j,)), world, S.DEV))
-        if pick_on is S.DEV and (clears or gain <= 0):
+        gain, luck, clears = compare(base_val, S.errors(dict(S.BEST, junk=(j,)), world, S.VAL))
+        if pick_on is S.VAL and (clears or gain <= 0):
             continue  # only near-misses: better, but not provably
         chosen.append(j)
     bundle = dict(S.BEST, junk=tuple(chosen))
-    gain, luck, clears = compare(base_dev, S.errors(bundle, world, S.DEV))
-    true_gain = -np.mean([S.errors(bundle, t, S.DEV + S.VAULT).mean() - S.errors(S.BEST, t, S.DEV + S.VAULT).mean()
-                          for t in truth_towns])
+    gain, luck, clears = compare(base_val, S.errors(bundle, world, S.VAL))
+    true_gain = -np.mean([S.errors(bundle, t, S.VAL + S.HOLDOUT).mean()
+                          - S.errors(S.BEST, t, S.VAL + S.HOLDOUT).mean() for t in truth_towns])
     return gain, luck, clears, true_gain
 
 
@@ -99,6 +99,6 @@ if __name__ == "__main__":
     print("Case A: ten REAL small effects (100 towns, each scored on its own year)")
     print(case_a().round(3).to_string())
     print("\nCase B: ten noise near-misses picked on the scored year, bundled (40 towns)")
-    print(case_bc(S.DEV).round(3).to_string())
+    print(case_bc(S.VAL).round(3).to_string())
     print("\nCase C: ten noise inputs picked on the practice year, bundled (40 towns)")
     print(case_bc(S.PRACTICE).round(3).to_string())

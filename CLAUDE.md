@@ -25,13 +25,13 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
   (reveal, fit, predict), revealing each day's load only after the guess.
   `scripts/test_rooms.py` proves the walls hold.
 - Months. Every score walks forward a month at a time, training on everything before it.
-  Jan-Jun 2023: warm-up. Jul 2023-Jun 2024: the agent's practice year.
-  Jul 2024-Jun 2025: the judge's scored year (dev); the agent never has it.
-  Jul-Dec 2025: the vault, opened once at the end.
+  Jan-Jun 2023: training. Jul 2023-Jun 2024: the agent's practice year.
+  Jul 2024-Jun 2025: the judge's scored year (validation); the agent never has it.
+  Jul-Dec 2025: holdout, scored once at the end.
 - Keep rule: reshuffle the 52 scored weeks 10,000 times. The k-th idea tested must win at
   least 1 - 5%/k of reshuffles (95% for the 1st, 99.5% for the 10th, 99.95% for the 100th),
   which keeps the expected number of lucky keeps under one for a 300-idea night.
-- `judge/answer_key.py` is the recipe that made the data (dev 2.83, vault 2.77 MWh). It is
+- `judge/answer_key.py` is the recipe that made the data (validation 2.83, holdout 2.77 MWh). It is
   close to the best possible but not a hard floor: adding yesterday's temperatures beats it
   slightly, because that sharpens the estimate of today's actual temperature.
 - `scripts/night_sim.py` re-implements the judge for speed (it reproduces the judge's scores exactly)
@@ -43,7 +43,7 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
 ## What we learned (MWh per day; "luck" = one standard deviation of a measured gain)
 1. Run 1, old rules (the agent had the scored year; a fixed 95% bar on single days): it found
    weekday effects and temperature. In one turn the agent tried 7 thresholds on the scored
-   year and submitted the best; it looked better there and worse on the vault, and the keep
+   year and submitted the best; it looked better there and worse on the holdout, and the keep
    rule threw it out.
 2. Simulated 300-idea nights (half setting tweaks, half pure-noise inputs), old rules: about
    9 flukes kept per night; the ledger claimed +0.45 while the truth was +0.22, and real
@@ -53,7 +53,7 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
 3. Neighbouring days are only weakly linked in this toy (about +0.1), so reshuffling whole
    weeks barely matters here. It is kept for real data (weather spells, same-day race conditions).
 4. Run 2, new rules (the current ledger and history): turn 1 went straight to a weekday plus
-   heating/cooling regression (dev 2.92, vault 2.75), and the next 4 ideas were rejected.
+   heating/cooling regression (validation 2.92, holdout 2.75), and the next 4 ideas were rejected.
    Checked on 50 parallel towns, 3 were truly no better, but turn 3 (add yesterday's
    temperatures) was truly better by 0.039, while one scored year's luck was 0.049.
    Small exams miss small gains.
@@ -69,14 +69,14 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
    Pick the pieces on data the final test doesn't use.
 7. Before the rooms, the judge ran `model.py` in its own process, next to the answers. A
    6-line model that read today's load from the judge's loop variable was kept as the 6th
-   idea (won 100%; dev 2.14 and vault 2.06 with noise added, 0.00 without), and it passed
-   `check.py`. The vault agreed, so every statistical guard failed at once. Walls, not
+   idea (won 100%; validation 2.14 and holdout 2.06 with noise added, 0.00 without), and it passed
+   `check.py`. The holdout agreed, so every statistical guard failed at once. Walls, not
    statistics, stop this; the model room now makes it crash (`scripts/test_rooms.py`).
 
 ## Open threads
 - Allow practice-year bundles: let the agent submit several ideas that each helped on its
   practice year as one try, and see whether it captures turn 3's real gain.
-- Remaining leak: the agent reads every rejected idea's dev score in the ledger. For long
+- Remaining leak: the agent reads every rejected idea's validation score in the ledger. For long
   runs, show it only kept / thrown away.
 - Set near-misses aside and re-test them on new months; never bundle them and re-test on the
   same scored year.
@@ -88,7 +88,7 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
 - `scripts/` holds helpers outside the main loop (`make_data.py`, the simulations). Run them from the repo root.
   Use `python3` on macOS.
 - Docker Desktop must be running. `python3 loop.py build` builds the three images (`run` and
-  `vault` do it first anyway); `python3 scripts/test_rooms.py` checks the walls (about 30 s).
+  `holdout` do it first anyway); `python3 scripts/test_rooms.py` checks the walls (about 30 s).
 - The agent room can't use the Mac's Keychain login, so `loop.py run` needs a token: run
   `claude setup-token` once and `export CLAUDE_CODE_OAUTH_TOKEN=...` in the shell. The room
   runs `claude -p --model sonnet` with Claude Code 2.1.319. Our agent turns cost about
@@ -106,6 +106,6 @@ with real numbers, and an analogy or intuition. Minimize symbols and define ever
 
 ## Background research
 Published work on agent research loops: Karpathy's autoresearch, the five big pitfalls with
-their evidence, and ways to reuse a holdout safely, with sources. Imported so it's always in
+their evidence, and ways to reuse a validation set safely, with sources. Imported so it's always in
 context:
 @docs/research.md

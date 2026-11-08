@@ -29,8 +29,8 @@ def months(a, b):
 
 
 PRACTICE = months("2023-07-01", "2024-06-01")  # the agent's own year, after the fix
-DEV = months("2024-07-01", "2025-06-01")       # the judge's year
-VAULT = months("2025-07-01", "2025-12-01")
+VAL = months("2024-07-01", "2025-06-01")       # the judge's validation year
+HOLDOUT = months("2025-07-01", "2025-12-01")
 
 
 def make_town(seed):
@@ -200,13 +200,13 @@ class Lab:
         key = (tuple(sorted(p.items())), what)
         if key not in self.cache:
             if what == "truth":
-                self.cache[key] = float(np.mean([errors(p, t, DEV + VAULT).mean() for t in self.multiverse]))
+                self.cache[key] = float(np.mean([errors(p, t, VAL + HOLDOUT).mean() for t in self.multiverse]))
             else:
-                self.cache[key] = errors(p, self.town, {"practice": PRACTICE, "dev": DEV, "vault": VAULT}[what])
+                self.cache[key] = errors(p, self.town, {"practice": PRACTICE, "val": VAL, "holdout": HOLDOUT}[what])
         return self.cache[key]
 
     def night(self, start, private, rule, seed, new_input_share=0.5, turns=300):
-        """private: which year the robot tests on before submitting ("dev" = today's toy, "practice" = fixed).
+        """private: which year the robot tests on before submitting ("val" = today's toy, "practice" = fixed).
         rule: keep_by_days (today) or keep_by_weeks (fixed)."""
         JUNK.clear()
         self.cache = {k: v for k, v in self.cache.items() if not dict(k[0])["junk"]}
@@ -225,21 +225,21 @@ class Lab:
             share = truth_change = np.nan
             if min(private_maes) < self.score(champ, private).mean():
                 submitted, k = True, k + 1
-                kept, share = rule(self.score(champ, "dev"), self.score(best, "dev"), k)
+                kept, share = rule(self.score(champ, "val"), self.score(best, "val"), k)
                 if kept:
                     truth_change = self.score(best, "truth") - self.score(champ, "truth")
                     champ = best
             rows.append(dict(turn=turn, idea=idea, submitted=submitted, kept=kept, win_share=share,
-                             truth_change=truth_change, dev=self.score(champ, "dev").mean(),
-                             vault=self.score(champ, "vault").mean(), truth=self.score(champ, "truth"),
+                             truth_change=truth_change, val=self.score(champ, "val").mean(),
+                             holdout=self.score(champ, "holdout").mean(), truth=self.score(champ, "truth"),
                              inputs=len(champ["junk"]), champion=str(champ)))
         return pd.DataFrame(rows)
 
 
 SYSTEMS = {
-    "today's toy": ("dev", keep_by_days),
+    "today's toy": ("val", keep_by_days),
     "hide answers only": ("practice", keep_by_days),
-    "stricter judge only": ("dev", keep_by_weeks),
+    "stricter judge only": ("val", keep_by_weeks),
     "both fixes": ("practice", keep_by_weeks),
 }
 SCENARIOS = {
@@ -249,18 +249,19 @@ SCENARIOS = {
 
 if __name__ == "__main__":
     lab = Lab()
-    key_truth = float(np.mean([answer_key_errors(t, DEV + VAULT).mean() for t in lab.multiverse]))
-    print(f"answer key: dev {answer_key_errors(lab.town, DEV).mean():.3f}  "
-          f"vault {answer_key_errors(lab.town, VAULT).mean():.3f}  truth {key_truth:.3f}")
+    key_truth = float(np.mean([answer_key_errors(t, VAL + HOLDOUT).mean() for t in lab.multiverse]))
+    print(f"answer key: validation {answer_key_errors(lab.town, VAL).mean():.3f}  "
+          f"holdout {answer_key_errors(lab.town, HOLDOUT).mean():.3f}  truth {key_truth:.3f}")
     nights = []
     for scenario, start in SCENARIOS.items():
-        s = {w: lab.score(start, w) for w in ("dev", "vault", "truth")}
-        print(f"\n{scenario}: start dev {s['dev'].mean():.3f}  vault {s['vault'].mean():.3f}  truth {s['truth']:.3f}")
+        s = {w: lab.score(start, w) for w in ("val", "holdout", "truth")}
+        print(f"\n{scenario}: start validation {s['val'].mean():.3f}  "
+              f"holdout {s['holdout'].mean():.3f}  truth {s['truth']:.3f}")
         for name, (private, rule) in SYSTEMS.items():
             for seed in range(10):
                 df = lab.night(start, private, rule, seed)
                 df["scenario"], df["system"], df["seed"] = scenario, name, seed
-                df["ledger_gain"] = s["dev"].mean() - df.dev
+                df["ledger_gain"] = s["val"].mean() - df.val
                 df["true_gain"] = s["truth"] - df.truth
                 nights.append(df)
         part = pd.concat([n for n in nights if n.scenario.iloc[0] == scenario])
@@ -271,7 +272,7 @@ if __name__ == "__main__":
             "flukes kept": keeps[keeps.truth_change >= 0].groupby("system").size().reindex(SYSTEMS, fill_value=0) / 10,
             "ledger gain": end.groupby("system").ledger_gain.mean(),
             "true gain": end.groupby("system").true_gain.mean(),
-            "final vault": end.groupby("system").vault.mean(),
+            "final holdout": end.groupby("system").holdout.mean(),
         }).reindex(SYSTEMS).round(3).to_string())
     pd.concat(nights).to_csv("night_sim.csv", index=False)
     print("\nAverages over 10 nights of 300 turns each. MWh per day; gain = how much the average miss shrank.")

@@ -1,4 +1,4 @@
-turn	idea	dev_mae	win_pct	bar_pct	decision
+turn	idea	val_mae	win_pct	bar_pct	decision
 0	baseline: average of the last 7 days	5.782	-	-	start
 1	Regress load on weekday plus heating/cooling degree days	2.915	100.0	95.0	KEPT
 2	Fit log load instead of raw load, then exponentiate	2.942	9.6	97.5	thrown away

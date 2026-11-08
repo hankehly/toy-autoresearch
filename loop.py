@@ -2,14 +2,14 @@
   1. copy lab/ into a fresh, empty workspace
   2. a fresh Claude Code session reads program.md + ledger.tsv and changes model.py. It works
      in the agent room: a container that sees only that workspace and reaches only Claude's API
-  3. only model.py comes back; the judge compares it with the champion on the dev months,
+  3. only model.py comes back; the judge compares it with the champion on the validation months,
      with a bar that rises with every idea tested (see judge.py)
   4. keep it (new champion) or throw it away, and write the verdict into ledger.tsv
 
     python loop.py run 5     # five more turns (continues from the ledger)
-    python loop.py vault     # open the vault once, at the end: Jul - Dec 2025
+    python loop.py holdout   # score the holdout once, at the end: Jul - Dec 2025
     python loop.py reset     # back to the baseline
-    python loop.py build     # build the rooms' Docker images (run and vault do this first anyway)
+    python loop.py build     # build the rooms' Docker images (run and holdout do this first anyway)
 """
 import json
 import os
@@ -109,7 +109,7 @@ def judge(*args):
     return json.loads(run.stdout)
 
 
-COLUMNS = ["turn", "idea", "dev_mae", "win_pct", "bar_pct", "decision"]
+COLUMNS = ["turn", "idea", "val_mae", "win_pct", "bar_pct", "decision"]
 
 
 def read_ledger():
@@ -117,17 +117,17 @@ def read_ledger():
     return [dict(zip(COLUMNS, r.split("\t"))) for r in rows]
 
 
-def log(turn, idea, dev_mae, win_pct, bar_pct, decision):
+def log(turn, idea, val_mae, win_pct, bar_pct, decision):
     with LEDGER.open("a") as f:
-        f.write(f"{turn}\t{idea}\t{dev_mae}\t{win_pct}\t{bar_pct}\t{decision}\n")
-    print(f"turn {turn}: {idea} | dev MAE {dev_mae} | won {win_pct}% (needed {bar_pct}%) | {decision}", flush=True)
+        f.write(f"{turn}\t{idea}\t{val_mae}\t{win_pct}\t{bar_pct}\t{decision}\n")
+    print(f"turn {turn}: {idea} | validation MAE {val_mae} | won {win_pct}% (needed {bar_pct}%) | {decision}", flush=True)
 
 
 def start():
     HISTORY.mkdir(exist_ok=True)
     shutil.copy(LAB / "model.py", HISTORY / "turn_0.py")
     LEDGER.write_text("\t".join(COLUMNS) + "\n")
-    log(0, "baseline: average of the last 7 days", judge("score", "dev", LAB / "model.py")["mae"], "-", "-", "start")
+    log(0, "baseline: average of the last 7 days", judge("score", "val", LAB / "model.py")["mae"], "-", "-", "start")
 
 
 def turn(t):
@@ -166,16 +166,16 @@ def turn(t):
         log(t, idea, verdict["candidate_mae"], verdict["win_pct"], verdict["bar_pct"], "thrown away")
 
 
-def vault():
-    """Score the baseline and every kept model on the 6 months nobody has looked at."""
-    print(f"{'model':<58}{'dev':>6}{'vault':>7}")
+def holdout():
+    """Score the baseline and every kept model on the holdout: the 6 months nobody has looked at."""
+    print(f"{'model':<58}{'val':>6}{'holdout':>9}")
     for r in read_ledger():
         if r["decision"] in ("start", "KEPT"):
-            v = judge("score", "vault", HISTORY / f"turn_{r['turn']}.py")["mae"]
-            print(f"{'turn ' + r['turn'] + ': ' + r['idea']:<58.58}{float(r['dev_mae']):>6.2f}{v:>7.2f}")
+            holdout_mae = judge("score", "holdout", HISTORY / f"turn_{r['turn']}.py")["mae"]
+            print(f"{'turn ' + r['turn'] + ': ' + r['idea']:<58.58}{float(r['val_mae']):>6.2f}{holdout_mae:>9.2f}")
     key = JUDGE / "answer_key.py"
-    d, v = judge("score", "dev", key)["mae"], judge("score", "vault", key)["mae"]
-    print(f"{'answer key (the exact recipe; about the best possible)':<58}{d:>6.2f}{v:>7.2f}")
+    val_mae, holdout_mae = judge("score", "val", key)["mae"], judge("score", "holdout", key)["mae"]
+    print(f"{'answer key (the exact recipe; about the best possible)':<58}{val_mae:>6.2f}{holdout_mae:>9.2f}")
 
 
 def reset():
@@ -197,8 +197,8 @@ if __name__ == "__main__":
         last = int(read_ledger()[-1]["turn"])
         for t in range(last + 1, last + 1 + int(sys.argv[2] if len(sys.argv) > 2 else 5)):
             turn(t)
-    elif cmd == "vault":
+    elif cmd == "holdout":
         build()
-        vault()
+        holdout()
     elif cmd == "reset":
         reset()

@@ -2,7 +2,7 @@
 
 We write the recipe ourselves, so we know the best score any model could get.
 The agent gets Jan 2023 - Jun 2024. The judge scores Jul 2024 - Jun 2025, a year the agent
-never sees. Jul - Dec 2025 is the vault, opened once at the end.
+never sees. Jul - Dec 2025 is the holdout, scored once at the end.
 """
 from pathlib import Path
 
