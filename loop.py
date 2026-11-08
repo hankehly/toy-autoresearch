@@ -31,9 +31,12 @@ IMAGES = ["model-sandbox", "agent-sandbox", "agent-proxy"]  # folders in docker/
 NETWORK = "toy-agent-net"  # the agent sandbox's network: its only way out is the proxy
 PROXY = "toy-agent-proxy"  # the proxy's container: squid, which lets through Claude's API alone
 
-PROMPT = ("Read program.md, then ledger.tsv, then model.py. Make your one change to model.py, "
-          "run check.py with python, and fix model.py if it crashes. "
-          "Your last line must be: IDEA: <your change in under 12 words>")
+# The steps of a turn are in program.md, the brief you edit. Only the IDEA line is asked for
+# here, because turn() reads it.
+# TODO: How much better on the practice year is "clearly better" (program.md, step 6)? No fixed
+# number fits every idea; a practice.py running the judge's reshuffle test could answer it.
+PROMPT = ("Read program.md and follow its steps. "
+          "Your last line must be: IDEA: <your idea in under 12 words>")
 AGENT = ["timeout", "1800",                         # a turn still running after 30 minutes is stopped
          "claude", "-p", PROMPT,
          "--model", "sonnet",

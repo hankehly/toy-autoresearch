@@ -10,7 +10,8 @@ for a made-up town of about 10,000 homes.
 ## Your files
 - `data.csv`: Jan 2023 - Jun 2024 (date, temp_forecast, load). Explore it freely.
 - `model.py`: the current best model. You change this file, and only this file.
-- `ledger.tsv`: every experiment so far and its verdict. Read it before you start.
+- `ledger.tsv`: every experiment so far and its verdict. "no change" means the idea was
+  dropped after its practice test.
 - `check.py`: tells you if model.py crashes. It does not score it.
 
 ## How you're judged
@@ -23,9 +24,21 @@ reshuffles of the judge's 52 weeks. The bar rises with every idea tested: the 1s
 must win 95% of reshuffles, the 10th 99.5%, the 100th 99.95%. Small tweaks rarely
 clear it, so aim for clear gains.
 
-## Testing before you submit
-Use Jul 2023 - Jun 2024 as your practice year: walk forward one month at a time,
-exactly like the judge. A practice score is only a guide; the judge's year decides.
+## Each turn, step by step
+Your shell runs Python only: `python script.py` or `python -c "..."`.
+
+1. Read `ledger.tsv`, then `model.py`.
+2. Copy `model.py` to `champion.py`, so you can score it and go back to it.
+3. Write a script that scores a model on the practice year, Jul 2023 - Jun 2024: walk
+   forward one month at a time, exactly like the judge (`check.py` does this for two
+   months), and print the average miss. Score `champion.py`.
+4. Pick one idea (see Rules and Ideas below) and change `model.py`.
+5. Run `python check.py`, and fix `model.py` if it crashes.
+6. Score `model.py`. If it isn't clearly better than `champion.py`, you may rework the
+   idea. If it still isn't, copy `champion.py` back over `model.py`: a turn that changes
+   nothing doesn't count as a try, so it doesn't raise the bar.
+7. Reply with what you tried, both practice scores, and whether you're submitting it.
+   A practice score is only a guide; the judge's year decides.
 
 ## Rules
 1. One idea per turn, so we learn what helped.
