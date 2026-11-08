@@ -4,9 +4,14 @@
 
 The model room: honest models must score exactly what the old judge gave them, and
 models that try to cheat must crash instead of scoring.
+The agent room: its only way out is the door, which opens to Claude's API alone. Only a
+plain model.py comes back from it, and a run without a login token stops at once.
 Prints PASS or FAIL for each check, and exits with 1 if any check failed.
 """
+import json
+import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -130,6 +135,76 @@ def predict(state, history, today):
 for i, (name, code) in enumerate(cheats.items()):
     result = dev_score(write_model(f"cheat{i}", code))
     check(f"cheat is stopped: {name}", isinstance(result, RuntimeError), f"got {result!r}")
+
+
+# --- The agent room: only a plain model.py comes back -------------------------------
+
+handoff = TMP / "handoff"
+handoff.mkdir()
+kept = TMP / "kept.py"
+check("hand-off: no model.py, nothing comes back", loop.copy_submission(handoff, kept) is False)
+
+(TMP / "elsewhere.txt").write_text("some other file on your Mac")
+(handoff / "model.py").symlink_to(TMP / "elsewhere.txt")
+check("hand-off: a shortcut is refused", loop.copy_submission(handoff, kept) is False and not kept.exists())
+
+(handoff / "model.py").unlink()
+(handoff / "model.py").write_text("# a plain model.py\n")
+check("hand-off: a plain model.py comes back",
+      loop.copy_submission(handoff, kept) is True and kept.read_text() == "# a plain model.py\n")
+
+
+# --- The agent room: no login token, no run -----------------------------------------
+# Checked in a separate Python, so the test never starts a real agent turn.
+
+no_token = {name: value for name, value in os.environ.items() if name != "CLAUDE_CODE_OAUTH_TOKEN"}
+stop = subprocess.run([sys.executable, "-c", "import loop; loop.need_login_token()"],
+                      cwd=ROOT, env=no_token, capture_output=True, text=True)
+check("without a login token, run stops and says how to get one",
+      stop.returncode != 0 and "claude setup-token" in stop.stderr, " ".join(stop.stderr.split())[-110:])
+
+
+# --- The agent room: its only way out is the door, open to Claude's API alone --------
+# The probe runs inside the very room the agent gets: loop.agent_room().
+
+loop.open_door()
+loop.open_door()  # a door left over from an earlier run is replaced, not tripped over
+
+PROBE = """
+import json, os, subprocess, sys, urllib.error, urllib.request
+
+
+def reach(url, through_door=True):
+    no_proxy = urllib.request.ProxyHandler({})
+    opener = urllib.request.build_opener() if through_door else urllib.request.build_opener(no_proxy)
+    try:
+        opener.open(url, timeout=10)
+    except urllib.error.HTTPError:
+        pass  # an error page is still an answer: the site was reached
+    except Exception as error:
+        return str(error)
+    return "answered"
+
+
+print(json.dumps({
+    "claude": reach("https://api.anthropic.com/"),
+    "github": reach("https://github.com/"),
+    "github_around_the_door": reach("https://github.com/", through_door=False),
+    "sees_the_repo": os.path.exists(sys.argv[1]),
+    "claude_version": subprocess.run(["claude", "--version"], capture_output=True, text=True).stdout,
+}))
+"""
+room = TMP / "agent-room"
+room.mkdir()
+probe = subprocess.run(loop.agent_room(room) + ["python", "-c", PROBE, str(ROOT)], capture_output=True, text=True)
+seen = json.loads(probe.stdout or "{}")
+check("agent room reaches Claude's API through the door", seen.get("claude") == "answered", seen.get("claude"))
+check("agent room can't reach GitHub through the door", "403" in seen.get("github", ""), seen.get("github"))
+check("agent room can't go around the door",
+      seen.get("github_around_the_door", "answered") != "answered", seen.get("github_around_the_door"))
+check("agent room can't see the repo on your Mac", seen.get("sees_the_repo") is False, seen.get("sees_the_repo"))
+check("agent room has the Mac's Claude Code version",
+      "2.1.319" in seen.get("claude_version", ""), (seen.get("claude_version") or probe.stderr[-200:]).strip())
 
 
 shutil.rmtree(TMP)

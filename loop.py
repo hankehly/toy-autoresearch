@@ -1,6 +1,7 @@
 """The research loop. Each turn:
-  1. copy lab/ into a fresh, empty workspace (the agent gets no path to the judge or the vault)
-  2. a fresh Claude Code session reads program.md + ledger.tsv and changes model.py
+  1. copy lab/ into a fresh, empty workspace
+  2. a fresh Claude Code session reads program.md + ledger.tsv and changes model.py. It works
+     in the agent room: a container that sees only that workspace and reaches only Claude's API
   3. only model.py comes back; the judge compares it with the champion on the dev months,
      with a bar that rises with every idea tested (see judge.py)
   4. keep it (new champion) or throw it away, and write the verdict into ledger.tsv
@@ -11,6 +12,7 @@
     python loop.py build     # build the rooms' Docker images (run and vault do this first anyway)
 """
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -23,15 +25,19 @@ ROOT = Path(__file__).parent.resolve()
 LAB, JUDGE, HISTORY = ROOT / "lab", ROOT / "judge", ROOT / "history"
 LEDGER = LAB / "ledger.tsv"
 AGENT_FILES = ["program.md", "model.py", "check.py", "data.csv", "ledger.tsv"]
-ROOMS = ["model-room"]  # folders in rooms/, each built as the Docker image toy-<name>
+ROOMS = ["model-room", "agent-room", "agent-door"]  # folders in rooms/, each built as the Docker image toy-<name>
+NETWORK = "toy-agent-net"  # the agent room's network: its only way out is the door
+DOOR = "toy-agent-door"    # the door's container, a web proxy that lets through Claude's API alone
 
 PROMPT = ("Read program.md, then ledger.tsv, then model.py. Make your one change to model.py, "
           "run check.py with python, and fix model.py if it crashes. "
           "Your last line must be: IDEA: <your change in under 12 words>")
-AGENT = ["claude", "-p", PROMPT,
+AGENT = ["timeout", "1800",                         # a turn still running after 30 minutes is stopped
+         "claude", "-p", PROMPT,
          "--model", "sonnet",
          "--permission-mode", "acceptEdits",            # may edit files in its own workspace only
          "--allowedTools", "Bash(python *),Bash(python3 *)",  # and run python; anything else is refused
+         "--disallowedTools", "WebSearch,WebFetch",     # no web tools: its only sources are the lab files
          "--output-format", "json"]
 
 
@@ -40,6 +46,55 @@ def build():
     for name in ROOMS:
         subprocess.run(["docker", "build", "--quiet", "-t", f"toy-{name}", str(ROOT / "rooms" / name)],
                        check=True, stdout=subprocess.DEVNULL)
+
+
+def need_login_token():
+    """Stop with instructions if there's no login token to pass into the agent room.
+    (Your Mac keeps its own Claude login in the Keychain, which a container can't use.)"""
+    if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        sys.exit("The agent room needs a Claude login token. In your shell, run:\n"
+                 "    claude setup-token\n"
+                 "    export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>\n"
+                 "then run this command again.")
+
+
+def open_door():
+    """Open the door: the only way out of the agent room's network, and it leads to Claude's
+    API alone. It stays open after a run, so you can see everything the agent tried to reach:
+        docker exec toy-agent-door cat /var/log/squid/access.log"""
+    subprocess.run(["docker", "rm", "--force", DOOR], capture_output=True)  # remove an old door, if any
+    subprocess.run(["docker", "network", "create", "--internal", NETWORK], capture_output=True)  # fine if it exists
+    subprocess.run(["docker", "run", "--detach", "--name", DOOR, "--network", NETWORK, "toy-agent-door"],
+                   check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["docker", "network", "connect", "bridge", DOOR], check=True)  # the door's other side: the internet
+    for _ in range(50):  # wait up to 5 seconds for squid to start listening (it takes about half a second)
+        logs = subprocess.run(["docker", "logs", DOOR], capture_output=True, text=True)
+        if "Accepting HTTP Socket connections" in logs.stdout + logs.stderr:
+            return
+        time.sleep(0.1)
+    raise RuntimeError(f"the door didn't open; see: docker logs {DOOR}")
+
+
+def agent_room(work):
+    """The docker command that starts the agent room, up to the image name. The room sees only
+    the turn's workspace, and its only way out is the door."""
+    return ["docker", "run", "--rm", "--pull", "never",
+            "--network", NETWORK,                                  # no internet, except through the door
+            "-e", f"HTTPS_PROXY=http://{DOOR}:3128",               # so Claude Code sends its requests to the door
+            "-e", "CLAUDE_CODE_OAUTH_TOKEN",                       # your login token, passed on by name from your shell
+            "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",    # no update checks or error reports
+            "-v", f"{work}:/work",                                 # the turn's workspace: the only folder from your Mac
+            "toy-agent-room"]
+
+
+def copy_submission(work, candidate):
+    """Bring back the agent's model.py, but only if it's a plain file. A shortcut (symlink)
+    would be followed here on your Mac, so it could point at any file."""
+    submitted = work / "model.py"
+    if submitted.is_symlink() or not submitted.is_file():
+        return False
+    shutil.copy(submitted, candidate)
+    return True
 
 
 def judge(*args):
@@ -77,7 +132,7 @@ def turn(t):
     for name in AGENT_FILES:
         shutil.copy(LAB / name, work / name)
     began = time.time()
-    run = subprocess.run(AGENT, cwd=work, capture_output=True, text=True, timeout=1800)
+    run = subprocess.run(agent_room(work) + AGENT, capture_output=True, text=True)
     try:
         reply = json.loads(run.stdout)
     except json.JSONDecodeError:
@@ -85,12 +140,15 @@ def turn(t):
     found = re.findall(r"IDEA:\s*(.+)", reply.get("result") or "")
     idea = found[-1].strip().strip("*").replace("\t", " ") if found else "(no description)"
     candidate = HISTORY / f"turn_{t}.py"
-    shutil.copy(work / "model.py", candidate)  # only model.py comes back
+    submitted = copy_submission(work, candidate)  # only model.py comes back
     shutil.rmtree(work)
     (HISTORY / f"turn_{t}.json").write_text(json.dumps({
         "idea": idea, "seconds": round(time.time() - began),
         "cost_usd": reply.get("total_cost_usd"), "agent_reply": reply.get("result")}, indent=2))
 
+    if not submitted:
+        log(t, idea, "-", "-", "-", "no model.py")  # nothing to judge, so it doesn't count as a try
+        return
     if candidate.read_text() == (LAB / "model.py").read_text():
         log(t, idea, "-", "-", "-", "no change")  # nothing submitted, so it doesn't count as a try
         return
@@ -128,7 +186,9 @@ if __name__ == "__main__":
     if cmd == "build":
         build()
     elif cmd == "run":
+        need_login_token()
         build()
+        open_door()
         if not LEDGER.exists():
             start()
         last = int(read_ledger()[-1]["turn"])
