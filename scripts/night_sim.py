@@ -24,7 +24,7 @@ STARTS = pd.date_range("2023-01-01", "2026-01-01", freq="MS")
 FIRST = {m: int(DAYS.searchsorted(m)) for m in STARTS}
 
 
-def months(a, b):
+def months(a, b) -> list[pd.Timestamp]:
     return list(pd.date_range(a, b, freq="MS"))
 
 
@@ -33,7 +33,7 @@ VAL = months("2024-07-01", "2025-06-01")       # the judge's validation year
 HOLDOUT = months("2025-07-01", "2025-12-01")
 
 
-def make_town(seed):
+def make_town(seed) -> tuple[np.ndarray, np.ndarray]:
     """Same recipe as make_data.py. Seed 7 is the real toy town."""
     rng = np.random.default_rng(seed)
     season = 17 - 11 * np.cos(2 * np.pi * (DAYS.dayofyear.to_numpy() - 25) / 365.25)
@@ -50,7 +50,7 @@ def make_town(seed):
 
 
 class Town:
-    def __init__(self, seed):
+    def __init__(self, seed) -> None:
         self.seed = seed
         self.t, self.y = make_town(seed)
         onehot = np.eye(7)[DOW]
@@ -66,7 +66,7 @@ class Town:
 JUNK = {}
 
 
-def junk(jid, town):
+def junk(jid, town) -> np.ndarray:
     """A made-up input with no link to the load. Even ids: an events calendar (10% of days).
     Odd ids: a slow, humidity-like series. Every parallel town gets its own fresh draw."""
     key = (jid, town.seed)
@@ -79,20 +79,20 @@ def junk(jid, town):
     return JUNK[key]
 
 
-def dow_offsets(town, h0, s):
+def dow_offsets(town, h0, s) -> np.ndarray:
     """How far each weekday sits from its centred week, averaged over the history (as in turn 2)."""
     a, b = h0 + 3, s - 3
     sums, cnts = town.cGap[b] - town.cGap[a], town.cCnt[b] - town.cCnt[a]
     return np.where(cnts > 0, sums / np.maximum(cnts, 1), 0.0)
 
 
-def month_effects(resid, idx):
+def month_effects(resid, idx) -> np.ndarray:
     sums = np.bincount(MOY[idx], weights=resid, minlength=12)
     cnts = np.bincount(MOY[idx], minlength=12)
     return np.where(cnts > 0, sums / np.maximum(cnts, 1), 0.0)
 
 
-def run_month(p, town, F, cF, h0, s, e):
+def run_month(p, town, F, cF, h0, s, e) -> np.ndarray:
     j = np.arange(s, e)
     if p["mode"] == "anchored":  # last week's level + weekday + change in inputs (turn 2's model)
         w = p["win"]
@@ -121,7 +121,7 @@ def run_month(p, town, F, cF, h0, s, e):
     return pred
 
 
-def errors(p, town, month_list):
+def errors(p, town, month_list) -> np.ndarray:
     """Walk forward a month at a time, exactly like the judge. Returns each day's miss."""
     cols = [np.maximum(p["th"] - town.t, 0), np.maximum(town.t - p["tc"], 0)]
     F = np.column_stack(cols + [junk(jid, town) for jid in p["junk"]])
@@ -134,7 +134,7 @@ def errors(p, town, month_list):
     return np.concatenate(out)
 
 
-def answer_key_errors(town, month_list):
+def answer_key_errors(town, month_list) -> np.ndarray:
     idx = np.concatenate([np.arange(FIRST[m], FIRST[m + pd.offsets.MonthBegin(1)]) for m in month_list])
     t = town.t[idx]
     weekend = np.select([DOW[idx] == 5, DOW[idx] == 6], [-8.0, -12.0], 0.0)
@@ -147,13 +147,13 @@ WEEK = np.minimum(np.arange(365) // 7, 51)                                # 52 w
 WEEK_PICKS = np.random.default_rng(0).integers(0, 52, size=(10000, 52))
 
 
-def keep_by_days(old, new, k):
+def keep_by_days(old, new, k) -> tuple[bool, float]:
     """Today's rule: re-deal single days 1,000 times; keep if the candidate wins 95%."""
     share = float((new[DAY_PICKS].mean(1) < old[DAY_PICKS].mean(1)).mean())
     return share >= 0.95, share
 
 
-def keep_by_weeks(old, new, k):
+def keep_by_weeks(old, new, k) -> tuple[bool, float]:
     """Fixed rule: re-deal whole weeks; the k-th idea tested tonight must win 1 - 5%/k of re-deals."""
     sums = np.bincount(WEEK, weights=new - old, minlength=52)
     cnts = np.bincount(WEEK, minlength=52).astype(float)
@@ -167,7 +167,7 @@ BEST = dict(TODAY, mode="absolute", th=16.0, tc=22.0)  # about as good as this k
 SETTINGS = ["mode", "th", "tc", "win", "hist", "shrink", "dow", "moy"]
 
 
-def propose(p, idea, rng, fresh_ids):
+def propose(p, idea, rng, fresh_ids) -> list[dict]:
     if idea == "new input":
         return [dict(p, junk=p["junk"] + (next(fresh_ids),)) for _ in range(7)]
     if idea == "mode":
@@ -191,12 +191,12 @@ def propose(p, idea, rng, fresh_ids):
 
 
 class Lab:
-    def __init__(self, universes=100):
+    def __init__(self, universes=100) -> None:
         self.town = Town(7)
         self.multiverse = [Town(1000 + u) for u in range(universes)]
         self.cache = {}
 
-    def score(self, p, what):
+    def score(self, p, what) -> np.ndarray | float:
         key = (tuple(sorted(p.items())), what)
         if key not in self.cache:
             if what == "truth":
@@ -205,7 +205,7 @@ class Lab:
                 self.cache[key] = errors(p, self.town, {"practice": PRACTICE, "val": VAL, "holdout": HOLDOUT}[what])
         return self.cache[key]
 
-    def night(self, start, private, rule, seed, new_input_share=0.5, turns=300):
+    def night(self, start, private, rule, seed, new_input_share=0.5, turns=300) -> pd.DataFrame:
         """private: which year the robot tests on before submitting ("val" = today's toy, "practice" = fixed).
         rule: keep_by_days (today) or keep_by_weeks (fixed)."""
         JUNK.clear()

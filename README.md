@@ -8,15 +8,15 @@ The smallest working version of an agent research loop, with guards against over
     loop.py     each turn: fresh workspace -> fresh agent makes one change ->
                 judge compares -> keep or throw away -> ledger
     history/    every model the agent wrote, plus its reply and cost per turn
-    rooms/      the locked rooms (Docker containers), see "The three rooms" below:
-                model-room     where judge.py runs model.py: no internet, no files but model.py
-                agent-room     where the agent works: it sees only the turn's workspace
-                agent-door     the agent room's only way out: a proxy that lets through Claude's API alone
+    docker/     the two sandboxes and the proxy (Docker images), see "Isolation" below:
+                model-sandbox  where judge.py runs model.py: no internet, no files but model.py
+                agent-sandbox  where the agent works: it sees only the turn's workspace
+                agent-proxy    the agent sandbox's only way out: it lets through Claude's API alone
     scripts/    helpers outside the main loop:
-                test_rooms.py  proves the rooms' walls hold (about 30 seconds)
-                make_data.py   rebuilds the fake town (seeded, so you get the same data)
-                night_sim.py   simulates whole nights of 300 ideas and checks every keep against the truth
-                bundle_sim.py  tests whether small changes add up when submitted together
+                test_sandboxes.py  proves the isolation holds (about 30 seconds)
+                make_data.py       rebuilds the fake town (seeded, so you get the same data)
+                night_sim.py       simulates whole nights of 300 ideas and checks every keep against the truth
+                bundle_sim.py      tests whether small changes add up when submitted together
     docs/       the diagrams below
 
 ## One turn of the loop
@@ -39,15 +39,15 @@ history, June 2025 from 29.
 
 Needs Docker Desktop (running), Claude Code and [uv](https://docs.astral.sh/uv/).
 
-    uv sync                       # once: Python 3.12 and the locked packages, into .venv
-    uv run loop.py build          # build the rooms (run and holdout also do this first)
-    uv run scripts/test_rooms.py  # check that the walls hold (about 30 seconds)
-    claude setup-token            # once: a login token the agent room can use
+    uv sync                           # once: Python 3.12 and the locked packages, into .venv
+    uv run loop.py build              # build the Docker images (run and holdout also do this first)
+    uv run scripts/test_sandboxes.py  # check that the isolation holds (about 30 seconds)
+    claude setup-token                # once: a login token the agent sandbox can use
     export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>
-    uv run loop.py run 5          # five agent turns
-    uv run loop.py holdout        # score the holdout once, at the end
-    uv run loop.py reset          # start over from the baseline
-    uv run scripts/night_sim.py   # the overnight experiment, no agent needed (about 5 minutes)
+    uv run loop.py run 5              # five agent turns
+    uv run loop.py holdout            # score the holdout once, at the end
+    uv run loop.py reset              # start over from the baseline
+    uv run scripts/night_sim.py       # the overnight experiment, no agent needed (about 5 minutes)
 
 The ledger and history/ in this folder are from the example run below (agent: Claude Sonnet
 via `claude -p`; change the model in loop.py). `uv run loop.py reset` clears them.
@@ -94,31 +94,32 @@ Whole weeks are re-dealt together because neighbouring days share weather.
 3. The holdout is scored once. If you change things because of what it says, it becomes
    another validation set, so then you need fresh months to check on.
 
-## The three rooms
+## Isolation
 
-![The agent room, the host and the model room side by side, with the only four things that cross their walls: the lab files in, model.py out, notes in, one guess per day out](docs/three-rooms.drawio.png)
+![The agent sandbox, the host and the model sandbox side by side, with the only four things that pass between them: the lab files in, model.py out, messages in, one guess per day out](docs/sandboxes.drawio.png)
 
-Walls, not instructions, keep the agent's code away from the answers:
+Isolation, not instructions, keeps the agent's code away from the answers:
 
 - **The host** (your Mac) runs only code a human wrote, `loop.py` and `judge.py`, and holds
   all the data, the holdout included.
-- **The agent room** is a container that sees only the turn's workspace. Its network has one
-  way out, the door: a proxy that lets through Claude's API and refuses everything else. The
-  agent's web tools are off, and only a plain `model.py` comes back from the room.
-- **The model room** is where the judge runs `model.py`: a container with no internet, no
+- **The agent sandbox** is a container that sees only the turn's workspace. Its network has
+  one way out, the proxy, which lets through Claude's API and refuses everything else. The
+  agent's web tools are off, and only a plain `model.py` comes back from the sandbox.
+- **The model sandbox** is where the judge runs `model.py`: a container with no internet, no
   writable files, and nothing from your Mac except `model.py` itself, read-only. The judge
-  passes it notes, one line of JSON at a time, and reveals each day's load only after the
+  sends it messages, one line of JSON at a time, and reveals each day's load only after the
   model has guessed it.
 
-Before the rooms, the judge ran `model.py` in its own process, so a 6-line model could read
-today's answer from the judge's variables. It was kept, and the holdout agreed with it.
-`uv run scripts/test_rooms.py` now runs four such cheats and checks that each one crashes.
+Before the sandboxes, the judge ran `model.py` in its own process, so a 6-line model could
+read today's answer from the judge's variables. It was kept, and the holdout agreed with it.
+`uv run scripts/test_sandboxes.py` now runs four such cheats and checks that each one crashes.
 
-The door stays up after a run. Its log lists every request the agent sent through it, until
-the next run or test run starts a fresh door. Attempts to go around the door simply fail,
+The proxy stays up after a run. Its log lists every request the agent sent through it, until
+the next run or test run starts a fresh proxy. Attempts to go around the proxy simply fail,
 and leave no trace there.
 
-    docker exec toy-agent-door cat /var/log/squid/access.log
+    docker exec toy-agent-proxy cat /var/log/squid/access.log
 
-What the rooms don't fix: the ledger still shows the agent each rejected idea's validation score,
-and Docker is a strong fence for an over-eager agent, not a guarantee against hostile code.
+What the sandboxes don't fix: the ledger still shows the agent each rejected idea's
+validation score, and Docker is a strong fence for an over-eager agent, not a guarantee
+against hostile code.

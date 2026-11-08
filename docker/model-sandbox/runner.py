@@ -1,11 +1,11 @@
-"""The model room's only program. It loads model.py and answers the judge's notes.
+"""The model sandbox's only program. It loads model.py and answers the judge's messages.
 
-Each note is one line of JSON text, arriving on stdin:
+Each message is one line of JSON text, arriving on stdin:
   reveal   these days are now in the past (date, temp_forecast, load). No reply.
   fit      learn from every day revealed so far. Reply {"ok": true}.
   predict  today's date and temperature forecast. Reply {"guess": <load in MWh>}.
 
-The room knows only what the notes have told it. The judge reveals a day's load
+The sandbox knows only what the messages have told it. The judge reveals a day's load
 only after this program has sent back its guess for that day.
 """
 import json
@@ -22,18 +22,18 @@ past = None   # every day revealed so far, as one table
 state = None  # whatever model.fit() returned
 
 for line in sys.stdin:
-    note = json.loads(line)
+    message = json.loads(line)
 
-    if note["op"] == "reveal":
-        days = pd.DataFrame(note["days"])
+    if message["op"] == "reveal":
+        days = pd.DataFrame(message["days"])
         days["date"] = pd.to_datetime(days["date"])
         past = days if past is None else pd.concat([past, days], ignore_index=True)
 
-    elif note["op"] == "fit":
+    elif message["op"] == "fit":
         state = model.fit(past.copy())
         print(json.dumps({"ok": True}), file=to_judge, flush=True)
 
-    elif note["op"] == "predict":
-        today = {"date": pd.Timestamp(note["date"]), "temp_forecast": note["temp_forecast"]}
+    elif message["op"] == "predict":
+        today = {"date": pd.Timestamp(message["date"]), "temp_forecast": message["temp_forecast"]}
         guess = float(model.predict(state, past.copy(), today))
         print(json.dumps({"guess": guess}), file=to_judge, flush=True)

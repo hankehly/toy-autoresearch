@@ -1,8 +1,8 @@
 """The frozen judge. The loop calls it; the agent never sees this folder.
 
-The agent's model.py never runs in here, next to the answers. It runs in the model room:
-a locked container (rooms/model-room) with no internet and no files except model.py.
-The judge passes it notes, one line of JSON at a time, and reveals each day's actual
+The agent's model.py never runs in here, next to the answers. It runs in the model sandbox:
+a locked container (docker/model-sandbox) with no internet and no files except model.py.
+The judge sends it messages, one line of JSON at a time, and reveals each day's actual
 load only after the model has sent back its guess for that day.
 
     uv run judge/judge.py score val     lab/model.py           # validation, Jul 2024 - Jun 2025: what the agent is graded on
@@ -30,8 +30,8 @@ FLUKE_BUDGET = 0.05  # the k-th idea tested must win at least 1 - 5%/k of the re
 CRASHED = "model.py crashed or ran out of time (its error, if any, is printed above)"
 
 
-def open_model_room(model_path):
-    """Start a model room for model_path. The judge talks to it through stdin and stdout."""
+def open_model_sandbox(model_path) -> subprocess.Popen:
+    """Start a model sandbox for model_path. The judge talks to it through stdin and stdout."""
     return subprocess.Popen([
         "docker", "run", "--rm", "-i", "--pull", "never",
         "--network", "none",                                          # no internet
@@ -39,58 +39,58 @@ def open_model_room(model_path):
         "--user", "65534:65534",                                      # runs as "nobody", not as you
         "--cap-drop", "ALL", "--security-opt", "no-new-privileges",  # can't give itself extra powers
         "--memory", "2g", "--cpus", "2", "--pids-limit", "64",        # can't hog your Mac
-        "-v", f"{Path(model_path).resolve()}:/room/model.py:ro",      # its one file, read-only
-        "toy-model-room",
+        "-v", f"{Path(model_path).resolve()}:/sandbox/model.py:ro",   # its one file, read-only
+        "toy-model-sandbox",
     ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 
 
-def tell(room, note):
-    """Pass the room a note. No reply."""
+def tell(sandbox, message) -> None:
+    """Send the sandbox a message. No reply."""
     try:
-        room.stdin.write(json.dumps(note) + "\n")
-        room.stdin.flush()
-    except BrokenPipeError:  # the room has already closed
+        sandbox.stdin.write(json.dumps(message) + "\n")
+        sandbox.stdin.flush()
+    except BrokenPipeError:  # the sandbox has already closed
         raise RuntimeError(CRASHED) from None
 
 
-def ask(room, note):
-    """Pass the room a note and wait for its reply."""
-    tell(room, note)
-    reply = room.stdout.readline()
-    if not reply:  # the room closed without replying
+def ask(sandbox, message) -> dict:
+    """Send the sandbox a message and wait for its reply."""
+    tell(sandbox, message)
+    reply = sandbox.stdout.readline()
+    if not reply:  # the sandbox closed without replying
         raise RuntimeError(CRASHED)
     return json.loads(reply)
 
 
-def as_rows(days):
-    """Days as plain rows that a note can carry: date, temp_forecast, load."""
+def as_rows(days) -> list[dict]:
+    """Days as plain rows that a message can carry: date, temp_forecast, load."""
     return days.assign(date=days.date.dt.strftime("%Y-%m-%d")).to_dict("records")
 
 
-def daily_misses(model_path, split):
+def daily_misses(model_path, split) -> np.ndarray:
     """Walk forward one month at a time, like real life.
     fit() learns from every day before the month. predict() sees every day before today,
     plus today's date and temperature forecast - never today's load. Each day's load is
     revealed only after the model has guessed it."""
-    room = open_model_room(model_path)
-    tell(room, {"op": "reveal", "days": as_rows(DATA[DATA.date < MONTHS[split][0]])})
+    sandbox = open_model_sandbox(model_path)
+    tell(sandbox, {"op": "reveal", "days": as_rows(DATA[DATA.date < MONTHS[split][0]])})
     misses = []
     for start in MONTHS[split]:
-        ask(room, {"op": "fit"})
+        ask(sandbox, {"op": "fit"})
         month = DATA[(DATA.date >= start) & (DATA.date < start + pd.offsets.MonthBegin(1))]
         for day in month.itertuples():
-            reply = ask(room, {"op": "predict", "date": f"{day.date:%Y-%m-%d}", "temp_forecast": day.temp_forecast})
+            reply = ask(sandbox, {"op": "predict", "date": f"{day.date:%Y-%m-%d}", "temp_forecast": day.temp_forecast})
             guess = float(reply["guess"])
             if not np.isfinite(guess):
                 raise ValueError(f"prediction for {day.date:%Y-%m-%d} is not a number")
             misses.append(abs(day.load - guess))
-            tell(room, {"op": "reveal", "days": as_rows(month[month.date == day.date])})  # only now is today the past
-    room.stdin.close()  # no more notes: the runner finishes and Docker removes the container
-    room.wait()
+            tell(sandbox, {"op": "reveal", "days": as_rows(month[month.date == day.date])})  # only now is today the past
+    sandbox.stdin.close()  # no more messages: the runner finishes and Docker removes the container
+    sandbox.wait()
     return np.array(misses)
 
 
-def compare(champion_path, candidate_path, k):
+def compare(champion_path, candidate_path, k) -> dict:
     """Re-deal the 52 scored weeks 10,000 times (some weeks twice, some not at all).
     Whole weeks move together because neighbouring days share weather.
     The k-th idea tested is kept only if its average miss is lower in at least 1 - 5%/k

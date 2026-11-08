@@ -4,8 +4,9 @@ version = "0.1.0"
 description = "The smallest working version of an agent research loop, with guards against overfitting."
 requires-python = ">=3.12"
 dependencies = [
-    # The same versions the rooms install (rooms/agent-room and rooms/model-room Dockerfiles),
-    # so the Mac and the rooms do the same arithmetic. Change all three files together.
+    # The same versions the sandboxes install (the Dockerfiles in docker/agent-sandbox and
+    # docker/model-sandbox), so the Mac and the sandboxes do the same arithmetic. Change all
+    # three files together.
     "numpy==2.2.3",
     "pandas==2.2.3",
     # Only the simulations use scipy (scripts/night_sim.py; bundle_sim.py imports it).

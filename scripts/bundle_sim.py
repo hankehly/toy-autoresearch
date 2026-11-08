@@ -28,7 +28,7 @@ EVENTS = tuple(range(2, 22, 2))  # even ids are event calendars (10% of days) in
 class EventTown(S.Town):
     """The toy town, plus ten real event effects in the load."""
 
-    def __init__(self, seed):
+    def __init__(self, seed) -> None:
         self.seed = seed
         t, y = S.make_town(seed)
         for jid in EVENTS:
@@ -44,7 +44,7 @@ class EventTown(S.Town):
         self.cCnt = np.vstack([np.zeros(7), np.cumsum(onehot * ok[:, None], axis=0)])
 
 
-def compare(old, new):
+def compare(old, new) -> tuple[float, float, bool]:
     """Gain (positive = better), luck (one standard deviation of the gain), and whether the
     gain clears the old 95% bar (about 1.65 times the luck)."""
     d = new - old
@@ -52,7 +52,7 @@ def compare(old, new):
     return -d.mean(), luck, (-d.mean() / luck) >= 1.645
 
 
-def case_a(worlds=100):
+def case_a(worlds=100) -> pd.DataFrame:
     rows = []
     for u in range(worlds):
         w = EventTown(1000 + u)
@@ -64,7 +64,7 @@ def case_a(worlds=100):
     return df.groupby("what", sort=False).mean()
 
 
-def near_miss_bundle(world, pick_on, first_id, truth_towns):
+def near_miss_bundle(world, pick_on, first_id, truth_towns) -> tuple[float, float, bool, float]:
     """Collect 10 near-misses: the best of 7 noise inputs versus the best model, chosen on
     `pick_on`. When picking on the scored year, keep only ones that look better there but
     don't clear the bar. Then score the bundle of all 10 on the scored year and in truth."""
@@ -89,7 +89,7 @@ def near_miss_bundle(world, pick_on, first_id, truth_towns):
     return gain, luck, clears, true_gain
 
 
-def case_bc(pick_on, worlds=40):
+def case_bc(pick_on, worlds=40) -> pd.Series:
     truth_towns = [S.Town(3000 + u) for u in range(20)]
     rows = [near_miss_bundle(S.Town(2000 + i), pick_on, 10_001 + 1000 * i, truth_towns) for i in range(worlds)]
     return pd.DataFrame(rows, columns=["gain", "luck", "clears", "true gain"]).mean()

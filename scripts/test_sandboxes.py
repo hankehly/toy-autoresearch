@@ -1,11 +1,11 @@
-"""Proves that the rooms' walls hold. Run it from the repo root:
+"""Proves that the isolation holds. Run it from the repo root:
 
-    uv run scripts/test_rooms.py
+    uv run scripts/test_sandboxes.py
 
-The model room: honest models must score exactly what the old judge gave them, and
+The model sandbox: honest models must score exactly what the old judge gave them, and
 models that try to cheat must crash instead of scoring.
-The agent room: its only way out is the door, which opens to Claude's API alone. Only a
-plain model.py comes back from it, and a run without a login token stops at once.
+The agent sandbox: its only way out is the proxy, which lets through Claude's API alone.
+Only a plain model.py comes back from it, and a run without a login token stops at once.
 Prints PASS or FAIL for each check, and exits with 1 if any check failed.
 """
 import json
@@ -21,18 +21,18 @@ sys.path[:0] = [str(ROOT), str(ROOT / "judge")]
 import judge  # noqa: E402  (imported after the path is set: these files live in the repo, not here)
 import loop  # noqa: E402
 
-loop.build()  # test the rooms as the current files describe them
-TMP = Path(tempfile.mkdtemp(prefix="test-rooms-"))
+loop.build()  # test the sandboxes as the current files describe them
+TMP = Path(tempfile.mkdtemp(prefix="test-sandboxes-"))
 failures = 0
 
 
-def check(name, passed, detail=""):
+def check(name, passed, detail="") -> None:
     global failures
     failures += not passed
     print(f"{'PASS' if passed else 'FAIL'}  {name}" + (f"  ({detail})" if detail else ""), flush=True)
 
 
-def write_model(name, code):
+def write_model(name, code) -> Path:
     """Save a test model as <TMP>/<name>/model.py and return its path."""
     path = TMP / name / "model.py"
     path.parent.mkdir()
@@ -40,7 +40,7 @@ def write_model(name, code):
     return path
 
 
-def val_score(model_path):
+def val_score(model_path) -> float | Exception:
     """The model's average miss on the validation year, or the error that stopped it."""
     try:
         return round(float(judge.daily_misses(model_path, "val").mean()), 3)
@@ -48,25 +48,25 @@ def val_score(model_path):
         return error
 
 
-# --- The model room: honest models score exactly as before -------------------------
-# The scores are what the old judge gave these models, before the rooms existed.
+# --- The model sandbox: honest models score exactly as before ----------------------
+# The scores are what the old judge gave these models, before the sandboxes existed.
 
 SEVEN_DAY_AVERAGE_THAT_PRINTS = '''
-def fit(history):
+def fit(history) -> None:
     print("fitting")  # a print must never be mistaken for the model's reply
     return None
 
 
-def predict(state, history, today):
+def predict(state, history, today) -> float:
     return history["load"].tail(7).mean()
 '''
 
 MONTH_AVERAGE_LEARNED_IN_FIT = '''
-def fit(history):
+def fit(history) -> float:
     return history["load"].tail(28).mean()
 
 
-def predict(state, history, today):
+def predict(state, history, today) -> float:
     return state
 '''
 
@@ -80,8 +80,8 @@ for name, path, old_score in honest:
     check(f"scores as before: {name}", score == old_score, f"got {score!r}, the old judge gave {old_score}")
 
 
-# --- The model room: cheats crash instead of scoring --------------------------------
-# A crash in the room reaches the judge as RuntimeError. Any other result means the
+# --- The model sandbox: cheats crash instead of scoring -----------------------------
+# A crash in the sandbox reaches the judge as RuntimeError. Any other result means the
 # cheat ran somewhere it could do harm.
 
 cheats = {
@@ -89,11 +89,11 @@ cheats = {
 import inspect
 
 
-def fit(history):
+def fit(history) -> None:
     return None
 
 
-def predict(state, history, today):
+def predict(state, history, today) -> float:
     return inspect.currentframe().f_back.f_locals["day"].load  # today's answer, if it's there
 ''',
     "reads the answer file": f'''
@@ -102,33 +102,33 @@ import pandas as pd
 ANSWERS = pd.read_csv("{ROOT / "judge" / "full_data.csv"}", parse_dates=["date"]).set_index("date")["load"]
 
 
-def fit(history):
+def fit(history) -> None:
     return None
 
 
-def predict(state, history, today):
+def predict(state, history, today) -> float:
     return ANSWERS[today["date"]]
 ''',
     "reaches the internet": '''
 import urllib.request
 
 
-def fit(history):
+def fit(history) -> None:
     urllib.request.urlopen("https://example.com", timeout=5)
     return None
 
 
-def predict(state, history, today):
+def predict(state, history, today) -> float:
     return 100.0
 ''',
     "leaves a note for the next agent": '''
-def fit(history):
-    with open(__file__, "a") as f:  # model.py is the one file the room shares with your Mac
+def fit(history) -> None:
+    with open(__file__, "a") as f:  # model.py is the one file the sandbox shares with your Mac
         f.write(f"# hidden days seen so far: {len(history)}\\n")
     return None
 
 
-def predict(state, history, today):
+def predict(state, history, today) -> float:
     return 100.0
 ''',
 }
@@ -137,7 +137,7 @@ for i, (name, code) in enumerate(cheats.items()):
     check(f"cheat is stopped: {name}", isinstance(result, RuntimeError), f"got {result!r}")
 
 
-# --- The agent room: only a plain model.py comes back -------------------------------
+# --- The agent sandbox: only a plain model.py comes back ----------------------------
 
 handoff = TMP / "handoff"
 handoff.mkdir()
@@ -154,7 +154,7 @@ check("hand-off: a plain model.py comes back",
       loop.copy_submission(handoff, kept) is True and kept.read_text() == "# a plain model.py\n")
 
 
-# --- The agent room: no login token, no run -----------------------------------------
+# --- The agent sandbox: no login token, no run --------------------------------------
 # Checked in a separate Python, so the test never starts a real agent turn.
 
 no_token = {name: value for name, value in os.environ.items() if name != "CLAUDE_CODE_OAUTH_TOKEN"}
@@ -164,24 +164,24 @@ check("without a login token, run stops and says how to get one",
       stop.returncode != 0 and "claude setup-token" in stop.stderr, " ".join(stop.stderr.split())[-110:])
 
 
-# --- The agent room: its only way out is the door, open to Claude's API alone --------
-# The probe runs inside the very room the agent gets: loop.agent_room().
+# --- The agent sandbox: its only way out is the proxy, open to Claude's API alone ----
+# The probe runs inside the very sandbox the agent gets: loop.agent_sandbox().
 
-# A leftover network with a way out (made by hand, say) must not survive open_door().
-subprocess.run(["docker", "rm", "--force", loop.DOOR], capture_output=True)
+# A leftover network with a way out (made by hand, say) must not survive start_proxy().
+subprocess.run(["docker", "rm", "--force", loop.PROXY], capture_output=True)
 subprocess.run(["docker", "network", "rm", loop.NETWORK], capture_output=True)
 subprocess.run(["docker", "network", "create", loop.NETWORK], check=True, stdout=subprocess.DEVNULL)
 
-loop.open_door()
-loop.open_door()  # a door left over from an earlier run is replaced, not tripped over
+loop.start_proxy()
+loop.start_proxy()  # a proxy left over from an earlier run is replaced, not tripped over
 
 PROBE = """
 import json, os, subprocess, sys, urllib.error, urllib.request
 
 
-def reach(url, through_door=True):
+def reach(url, through_proxy=True) -> str:
     no_proxy = urllib.request.ProxyHandler({})
-    opener = urllib.request.build_opener() if through_door else urllib.request.build_opener(no_proxy)
+    opener = urllib.request.build_opener() if through_proxy else urllib.request.build_opener(no_proxy)
     try:
         opener.open(url, timeout=10)
     except urllib.error.HTTPError:
@@ -194,21 +194,21 @@ def reach(url, through_door=True):
 print(json.dumps({
     "claude": reach("https://api.anthropic.com/"),
     "github": reach("https://github.com/"),
-    "github_around_the_door": reach("https://github.com/", through_door=False),
+    "github_around_the_proxy": reach("https://github.com/", through_proxy=False),
     "sees_the_repo": os.path.exists(sys.argv[1]),
     "claude_version": subprocess.run(["claude", "--version"], capture_output=True, text=True).stdout,
 }))
 """
-room = TMP / "agent-room"
-room.mkdir()
-probe = subprocess.run(loop.agent_room(room) + ["python", "-c", PROBE, str(ROOT)], capture_output=True, text=True)
+work = TMP / "agent-workspace"
+work.mkdir()
+probe = subprocess.run(loop.agent_sandbox(work) + ["python", "-c", PROBE, str(ROOT)], capture_output=True, text=True)
 seen = json.loads(probe.stdout or "{}")
-check("agent room reaches Claude's API through the door", seen.get("claude") == "answered", seen.get("claude"))
-check("agent room can't reach GitHub through the door", "403" in seen.get("github", ""), seen.get("github"))
-check("agent room can't go around the door",
-      seen.get("github_around_the_door", "answered") != "answered", seen.get("github_around_the_door"))
-check("agent room can't see the repo on your Mac", seen.get("sees_the_repo") is False, seen.get("sees_the_repo"))
-check("agent room has the Mac's Claude Code version",
+check("agent sandbox reaches Claude's API through the proxy", seen.get("claude") == "answered", seen.get("claude"))
+check("agent sandbox can't reach GitHub through the proxy", "403" in seen.get("github", ""), seen.get("github"))
+check("agent sandbox can't go around the proxy",
+      seen.get("github_around_the_proxy", "answered") != "answered", seen.get("github_around_the_proxy"))
+check("agent sandbox can't see the repo on your Mac", seen.get("sees_the_repo") is False, seen.get("sees_the_repo"))
+check("agent sandbox has the Mac's Claude Code version",
       "2.1.319" in seen.get("claude_version", ""), (seen.get("claude_version") or probe.stderr[-200:]).strip())
 
 

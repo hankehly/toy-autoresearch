@@ -1,7 +1,7 @@
 """The research loop. Each turn:
   1. copy lab/ into a fresh, empty workspace
   2. a fresh Claude Code session reads program.md + ledger.tsv and changes model.py. It works
-     in the agent room: a container that sees only that workspace and reaches only Claude's API
+     in the agent sandbox: a container that sees only that workspace and reaches only Claude's API
   3. only model.py comes back; the judge compares it with the champion on the validation months,
      with a bar that rises with every idea tested (see judge.py)
   4. keep it (new champion) or throw it away, and write the verdict into ledger.tsv
@@ -9,7 +9,7 @@
     uv run loop.py run 5     # five more turns (continues from the ledger)
     uv run loop.py holdout   # score the holdout once, at the end: Jul - Dec 2025
     uv run loop.py reset     # back to the baseline
-    uv run loop.py build     # build the rooms' Docker images (run and holdout do this first anyway)
+    uv run loop.py build     # build the Docker images (run and holdout do this first anyway)
 """
 import json
 import os
@@ -25,9 +25,9 @@ ROOT = Path(__file__).parent.resolve()
 LAB, JUDGE, HISTORY = ROOT / "lab", ROOT / "judge", ROOT / "history"
 LEDGER = LAB / "ledger.tsv"
 AGENT_FILES = ["program.md", "model.py", "check.py", "data.csv", "ledger.tsv"]
-ROOMS = ["model-room", "agent-room", "agent-door"]  # folders in rooms/, each built as the Docker image toy-<name>
-NETWORK = "toy-agent-net"  # the agent room's network: its only way out is the door
-DOOR = "toy-agent-door"    # the door's container, a web proxy that lets through Claude's API alone
+IMAGES = ["model-sandbox", "agent-sandbox", "agent-proxy"]  # folders in docker/, each built as the Docker image toy-<name>
+NETWORK = "toy-agent-net"  # the agent sandbox's network: its only way out is the proxy
+PROXY = "toy-agent-proxy"  # the proxy's container: squid, which lets through Claude's API alone
 
 PROMPT = ("Read program.md, then ledger.tsv, then model.py. Make your one change to model.py, "
           "run check.py with python, and fix model.py if it crashes. "
@@ -41,56 +41,56 @@ AGENT = ["timeout", "1800",                         # a turn still running after
          "--output-format", "json"]
 
 
-def build():
-    """Build the rooms' Docker images. Quick when nothing has changed: Docker reuses its cache."""
-    for name in ROOMS:
-        subprocess.run(["docker", "build", "--quiet", "-t", f"toy-{name}", str(ROOT / "rooms" / name)],
+def build() -> None:
+    """Build the three Docker images. Quick when nothing has changed: Docker reuses its cache."""
+    for name in IMAGES:
+        subprocess.run(["docker", "build", "--quiet", "-t", f"toy-{name}", str(ROOT / "docker" / name)],
                        check=True, stdout=subprocess.DEVNULL)
 
 
-def need_login_token():
-    """Stop with instructions if there's no login token to pass into the agent room.
+def need_login_token() -> None:
+    """Stop with instructions if there's no login token to pass into the agent sandbox.
     (Your Mac keeps its own Claude login in the Keychain, which a container can't use.)"""
     if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
-        sys.exit("The agent room needs a Claude login token. In your shell, run:\n"
+        sys.exit("The agent sandbox needs a Claude login token. In your shell, run:\n"
                  "    claude setup-token\n"
                  "    export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>\n"
                  "then run this command again.")
 
 
-def open_door():
-    """Open the door: the only way out of the agent room's network, and it leads to Claude's
-    API alone. It stays open after a run, and its log lists every request the agent sent
-    through it (the next run or test starts a fresh door, with an empty log):
-        docker exec toy-agent-door cat /var/log/squid/access.log"""
-    subprocess.run(["docker", "rm", "--force", DOOR], capture_output=True)  # remove an old door, if any
+def start_proxy() -> None:
+    """Start the proxy: the only way out of the agent sandbox's network, and it leads to
+    Claude's API alone. It keeps running after a run, and its log lists every request the
+    agent sent through it (the next run or test starts a fresh proxy, with an empty log):
+        docker exec toy-agent-proxy cat /var/log/squid/access.log"""
+    subprocess.run(["docker", "rm", "--force", PROXY], capture_output=True)  # remove an old proxy, if any
     subprocess.run(["docker", "network", "rm", NETWORK], capture_output=True)  # and an old network, however it was made
-    subprocess.run(["docker", "network", "create", "--internal", NETWORK],  # --internal: no way out of it but the door
+    subprocess.run(["docker", "network", "create", "--internal", NETWORK],  # --internal: no way out of it but the proxy
                    check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["docker", "run", "--detach", "--name", DOOR, "--network", NETWORK, "toy-agent-door"],
+    subprocess.run(["docker", "run", "--detach", "--name", PROXY, "--network", NETWORK, "toy-agent-proxy"],
                    check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["docker", "network", "connect", "bridge", DOOR], check=True)  # the door's other side: the internet
+    subprocess.run(["docker", "network", "connect", "bridge", PROXY], check=True)  # the proxy's other side: the internet
     for _ in range(50):  # wait up to 5 seconds for squid to start listening (it takes about half a second)
-        logs = subprocess.run(["docker", "logs", DOOR], capture_output=True, text=True)
+        logs = subprocess.run(["docker", "logs", PROXY], capture_output=True, text=True)
         if "Accepting HTTP Socket connections" in logs.stdout + logs.stderr:
             return
         time.sleep(0.1)
-    raise RuntimeError(f"the door didn't open; see: docker logs {DOOR}")
+    raise RuntimeError(f"the proxy didn't start; see: docker logs {PROXY}")
 
 
-def agent_room(work):
-    """The docker command that starts the agent room, up to the image name. The room sees only
-    the turn's workspace, and its only way out is the door."""
+def agent_sandbox(work) -> list[str]:
+    """The docker command that starts the agent sandbox, up to the image name. The sandbox
+    sees only the turn's workspace, and its only way out is the proxy."""
     return ["docker", "run", "--rm", "--pull", "never",
-            "--network", NETWORK,                                  # no internet, except through the door
-            "-e", f"HTTPS_PROXY=http://{DOOR}:3128",               # so Claude Code sends its requests to the door
+            "--network", NETWORK,                                  # no internet, except through the proxy
+            "-e", f"HTTPS_PROXY=http://{PROXY}:3128",              # so Claude Code sends its requests to the proxy
             "-e", "CLAUDE_CODE_OAUTH_TOKEN",                       # your login token, passed on by name from your shell
             "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",    # no update checks or error reports
             "-v", f"{work}:/work",                                 # the turn's workspace: the only folder from your Mac
-            "toy-agent-room"]
+            "toy-agent-sandbox"]
 
 
-def copy_submission(work, candidate):
+def copy_submission(work, candidate) -> bool:
     """Bring back the agent's model.py, but only if it's a plain file. A shortcut (symlink)
     would be followed here on your Mac, so it could point at any file."""
     submitted = work / "model.py"
@@ -100,7 +100,7 @@ def copy_submission(work, candidate):
     return True
 
 
-def judge(*args):
+def judge(*args) -> dict:
     run = subprocess.run([sys.executable, str(JUDGE / "judge.py"), *map(str, args)],
                          capture_output=True, text=True, timeout=900)
     if run.returncode != 0:
@@ -112,30 +112,30 @@ def judge(*args):
 COLUMNS = ["turn", "idea", "val_mae", "win_pct", "bar_pct", "decision"]
 
 
-def read_ledger():
+def read_ledger() -> list[dict[str, str]]:
     rows = LEDGER.read_text().strip().splitlines()[1:]
     return [dict(zip(COLUMNS, r.split("\t"))) for r in rows]
 
 
-def log(turn, idea, val_mae, win_pct, bar_pct, decision):
+def log(turn, idea, val_mae, win_pct, bar_pct, decision) -> None:
     with LEDGER.open("a") as f:
         f.write(f"{turn}\t{idea}\t{val_mae}\t{win_pct}\t{bar_pct}\t{decision}\n")
     print(f"turn {turn}: {idea} | validation MAE {val_mae} | won {win_pct}% (needed {bar_pct}%) | {decision}", flush=True)
 
 
-def start():
+def start() -> None:
     HISTORY.mkdir(exist_ok=True)
     shutil.copy(LAB / "model.py", HISTORY / "turn_0.py")
     LEDGER.write_text("\t".join(COLUMNS) + "\n")
     log(0, "baseline: average of the last 7 days", judge("score", "val", LAB / "model.py")["mae"], "-", "-", "start")
 
 
-def turn(t):
+def turn(t) -> None:
     work = Path(tempfile.mkdtemp(prefix=f"agent-turn{t}-"))
     for name in AGENT_FILES:
         shutil.copy(LAB / name, work / name)
     began = time.time()
-    run = subprocess.run(agent_room(work) + AGENT, capture_output=True, text=True)
+    run = subprocess.run(agent_sandbox(work) + AGENT, capture_output=True, text=True)
     try:
         reply = json.loads(run.stdout)
     except json.JSONDecodeError:
@@ -166,7 +166,7 @@ def turn(t):
         log(t, idea, verdict["candidate_mae"], verdict["win_pct"], verdict["bar_pct"], "thrown away")
 
 
-def holdout():
+def holdout() -> None:
     """Score the baseline and every kept model on the holdout: the 6 months nobody has looked at."""
     print(f"{'model':<58}{'val':>6}{'holdout':>9}")
     for r in read_ledger():
@@ -178,7 +178,7 @@ def holdout():
     print(f"{'answer key (the exact recipe; about the best possible)':<58}{val_mae:>6.2f}{holdout_mae:>9.2f}")
 
 
-def reset():
+def reset() -> None:
     shutil.copy(HISTORY / "turn_0.py", LAB / "model.py")
     shutil.rmtree(HISTORY)
     LEDGER.unlink()
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     elif cmd == "run":
         need_login_token()
         build()
-        open_door()
+        start_proxy()
         if not LEDGER.exists():
             start()
         last = int(read_ledger()[-1]["turn"])

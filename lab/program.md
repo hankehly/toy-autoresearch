@@ -31,7 +31,7 @@ exactly like the judge. A practice score is only a guide; the judge's year decid
 1. One idea per turn, so we learn what helped.
 2. Don't retry an idea the ledger shows was thrown away unless you change it meaningfully.
 3. Keep `fit()` and `predict()` working the same way. numpy and pandas only.
-   No reading files inside model.py: the judge runs it in a locked room with no files
+   No reading files inside model.py: the judge runs it in a locked sandbox with no files
    and no internet, where that crashes.
 4. Keep model.py under 60 lines. When two models tie, the simpler one wins.
 
