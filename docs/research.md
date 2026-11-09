@@ -57,8 +57,12 @@ calls fit/predict), `loop.py` (orchestrator), the holdout (gate 2).
 2. Winning the backtest by sheer volume.
    - Example: 100 variants all truly at 3.0% MAPE, each score wobbling by 0.05 points. The
      luckiest is usually about 2.5 wobbles better, so it shows about 2.875%: pure noise.
-   - Evidence: in Bespoke Labs' AutoResearchExam, validation scores kept climbing while
-     hidden-test performance often plateaued or regressed [6].
+   - Evidence: Bespoke Labs' AutoResearchExam scores each agent on sealed hidden tests
+     whenever its best validation score changes. Overfitting the validation set can make the
+     hidden-test score drop, though the authors note a validation/test gap alone doesn't prove
+     overfitting, and agents kept improving through 24-hour runs (79% of one model's runs
+     still improved after hour 12). Its main score, AUARC, is the time-weighted average
+     hidden-test score, which rewards early real gains [6].
    - Fixes: measure the noise floor first by rerunning the baseline across seeds. Accept only
      gains well above it that win on most folds and survive a rerun. Keep the agent away from
      the holdout. Reproduction check: give a fresh agent with no validation access only a short
@@ -89,8 +93,9 @@ calls fit/predict), `loop.py` (orchestrator), the holdout (gate 2).
    - Load: MAPE is fine to start. If the forecast drives procurement or imbalance costs, score
      errors in yen, because peak-hour misses cost more.
 5. Shallow search and complexity creep.
-   - Agents drift toward safe tweaks: in AutoResearchExam one model reportedly spent 55.5% of
-     its rounds on hyperparameter tuning [6]. Stacks of noise-level wins make pipelines brittle.
+   - Agents drift toward safe tweaks: in AutoResearchExam, GPT-5.6 Sol spent about 55% of its
+     rounds on hyperparameter tuning alone, against about 7% for Fable 5.1 and Opus 5 [6].
+     Stacks of noise-level wins make pipelines brittle.
    - Fixes: leave tuning to Optuna; require each hypothesis to name an idea family; run
      periodic removal passes (delete a component; keep the deletion if the score holds).
      Strategies that can be described compactly tend to generalize [7].
@@ -112,7 +117,7 @@ through the ledger.
 3. Karpathy's autoresearch (The Menon Lab): https://themenonlab.blog/blog/karpathy-autoresearch-autonomous-ml-experiments
 4. Recent Frontier Models Are Reward Hacking (METR): https://metr.org/blog/2025-06-05-recent-reward-hacking/
 5. How Do Agents Fail on AutoResearch (arXiv 2608.14905), Appendix B, pattern C.2: https://arxiv.org/pdf/2608.14905
-6. AutoResearchExam write-up: https://www.besthub.dev/articles/autoresearchexam-ai-research-agents-overfit-to-validation-sets-hidden-tests-reveal-true-generalization-after-24-hours-b869db815258
+6. AutoResearchExam blog (Bespoke Labs): https://benchmarks.bespokelabs.ai/autoresearchexam/blog.html
 7. What Fits Doesn't Overfit (arXiv 2606.11045): https://arxiv.org/html/2606.11045
 8. Open-Meteo Single Runs / Previous Runs APIs: https://openmeteo.substack.com/p/single-runs-api
 9. Open-Meteo Historical Forecast API: https://openmeteo.substack.com/p/introducing-the-historical-forecast
