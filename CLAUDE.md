@@ -112,3 +112,17 @@ Published work on agent research loops: Karpathy's autoresearch, the five big pi
 their evidence, and ways to reuse a validation set safely, with sources. Imported so it's always in
 context:
 @docs/research.md
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on hankehly/toy-autoresearch, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels: needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root, created only when needed. See `docs/agents/domain.md`.
