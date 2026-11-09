@@ -59,10 +59,10 @@ calls fit/predict), `loop.py` (orchestrator), the holdout (gate 2).
      luckiest is usually about 2.5 wobbles better, so it shows about 2.875%: pure noise.
    - Evidence: Bespoke Labs' AutoResearchExam scores each agent on sealed hidden tests
      whenever its best validation score changes. Overfitting the validation set can make the
-     hidden-test score drop, though the authors note a validation/test gap alone doesn't prove
+     hidden-test score drop. The authors caution that a validation/test gap alone doesn't prove
      overfitting, and agents kept improving through 24-hour runs (79% of one model's runs
-     still improved after hour 12). Its main score, AUARC, is the time-weighted average
-     hidden-test score, which rewards early real gains [6].
+     still improved after hour 12). The benchmark's main score, AUARC, is the time-weighted
+     average hidden-test score, which rewards early real gains [6].
    - Fixes: measure the noise floor first by rerunning the baseline across seeds. Accept only
      gains well above it that win on most folds and survive a rerun. Keep the agent away from
      the holdout. Reproduction check: give a fresh agent with no validation access only a short
