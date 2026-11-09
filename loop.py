@@ -26,6 +26,8 @@ LAB, JUDGE, HISTORY = ROOT / "lab", ROOT / "judge", ROOT / "history"
 
 # TODO: Does the ledger show amount of improvement, or just kept/rejected?
 LEDGER = LAB / "ledger.tsv"
+COLUMNS = ["turn", "idea", "val_mae", "win_pct", "bar_pct", "decision"]
+TRIED = ("KEPT", "thrown away")  # the decisions that count as a try, so they raise the bar
 AGENT_FILES = ["program.md", "model.py", "check.py", "data.csv", "ledger.tsv"]
 IMAGES = ["model-sandbox", "agent-sandbox", "agent-proxy"]  # folders in docker/, each built as the Docker image toy-<name>
 NETWORK = "toy-agent-net"  # the agent sandbox's network: its only way out is the proxy
@@ -114,17 +116,16 @@ def judge(*args) -> dict:
     return json.loads(run.stdout)
 
 
-COLUMNS = ["turn", "idea", "val_mae", "win_pct", "bar_pct", "decision"]
-
-
 def read_ledger() -> list[dict[str, str]]:
     rows = LEDGER.read_text().strip().splitlines()[1:]
     return [dict(zip(COLUMNS, r.split("\t"))) for r in rows]
 
 
-def log(turn, idea, val_mae, win_pct, bar_pct, decision) -> None:
+def log(turn, idea, decision, val_mae="-", win_pct="-", bar_pct="-") -> None:
+    """Add a row to the ledger (in COLUMNS order) and print it. Scores left out show as "-"."""
+    row = [str(v).replace("\t", " ") for v in (turn, idea, val_mae, win_pct, bar_pct, decision)]
     with LEDGER.open("a") as f:
-        f.write(f"{turn}\t{idea}\t{val_mae}\t{win_pct}\t{bar_pct}\t{decision}\n")
+        f.write("\t".join(row) + "\n")
     print(f"turn {turn}: {idea} | validation MAE {val_mae} | won {win_pct}% (needed {bar_pct}%) | {decision}", flush=True)
 
 
@@ -132,7 +133,7 @@ def start() -> None:
     HISTORY.mkdir(exist_ok=True)
     shutil.copy(LAB / "model.py", HISTORY / "turn_0.py")
     LEDGER.write_text("\t".join(COLUMNS) + "\n")
-    log(0, "baseline: average of the last 7 days", judge("score", "val", LAB / "model.py")["mae"], "-", "-", "start")
+    log(0, "baseline: average of the last 7 days", "start", val_mae=judge("score", "val", LAB / "model.py")["mae"])
 
 
 def turn(t) -> None:
@@ -150,7 +151,7 @@ def turn(t) -> None:
     except json.JSONDecodeError:
         reply = {"result": run.stdout[-1000:] + run.stderr[-1000:]}
     found = re.findall(r"IDEA:\s*(.+)", reply.get("result") or "")
-    idea = found[-1].strip().strip("*").replace("\t", " ") if found else "(no description)"
+    idea = found[-1].strip().strip("*") if found else "(no description)"
 
     # 3. bring back model.py, delete the workspace, and save the turn in history/
     candidate = HISTORY / f"turn_{t}.py"
@@ -162,24 +163,24 @@ def turn(t) -> None:
 
     # skip the judge if the agent sent back nothing new
     if not submitted:
-        log(t, idea, "-", "-", "-", "no model.py")  # nothing to judge, so it doesn't count as a try
+        log(t, idea, "no model.py")  # nothing to judge, so it doesn't count as a try
         return
     if candidate.read_text() == (LAB / "model.py").read_text():
-        log(t, idea, "-", "-", "-", "no change")  # nothing submitted, so it doesn't count as a try
+        log(t, idea, "no change")  # nothing submitted, so it doesn't count as a try
         return
 
     # the judge compares it with the champion on the validation year; the bar rises with k
-    k = 1 + sum(r["decision"] in ("KEPT", "thrown away") for r in read_ledger())  # this is the k-th idea tested
+    k = 1 + sum(r["decision"] in TRIED for r in read_ledger())  # this is the k-th idea tested
     verdict = judge("compare", LAB / "model.py", candidate, k)
 
     # 4. keep it (new champion) or throw it away, and write the verdict into ledger.tsv
     if "error" in verdict:
-        log(t, idea, "-", "-", "-", "crashed")
-    elif verdict["keep"]:
+        log(t, idea, "crashed")
+        return
+    if verdict["keep"]:
         shutil.copy(candidate, LAB / "model.py")
-        log(t, idea, verdict["candidate_mae"], verdict["win_pct"], verdict["bar_pct"], "KEPT")
-    else:
-        log(t, idea, verdict["candidate_mae"], verdict["win_pct"], verdict["bar_pct"], "thrown away")
+    log(t, idea, "KEPT" if verdict["keep"] else "thrown away",
+        verdict["candidate_mae"], verdict["win_pct"], verdict["bar_pct"])
 
 
 def holdout() -> None:
