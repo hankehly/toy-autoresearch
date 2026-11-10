@@ -1,9 +1,12 @@
-turn	idea	val_mae	win_pct	bar_pct	decision
-0	baseline: average of the last 7 days	5.782	-	-	start
-1	Regress load on weekday plus heating/cooling degree days	2.915	100.0	95.0	KEPT
-2	Fit log load instead of raw load, then exponentiate	2.942	9.6	97.5	thrown away
-3	Add yesterday's heating/cooling degrees as extra regression features	2.893	67.91	98.33	thrown away
-4	Shift heating/cooling thresholds to 18C and 22C	2.975	8.66	98.75	thrown away
-5	Add yesterday's residual (AR(1)) correction to regression	2.914	61.92	99.0	thrown away
-6	Add yearly seasonal sine/cosine terms to the regression	2.921	28.97	99.17	thrown away
-7	Fit by least absolute deviations instead of least squares	-	-	-	no change
+# Champion: turn 1, practice 3.036 MWh
+# Ideas judged: 6. The next must win 99.29% of the judge's reshuffles.
+turn	idea	practice_champion	practice	practice_wins	verdict	lesson
+0	baseline: average of the last 7 days	-	5.656	-	start	-
+1	Regress load on weekday plus heating/cooling degree days	5.656	3.036	100.0	KEPT	-
+2	Fit log load instead of raw load, then exponentiate	3.036	3.026	66.37	thrown away	-
+3	Add yesterday's heating/cooling degrees as extra regression features	3.036	2.88	99.9	thrown away	-
+4	Shift heating/cooling thresholds to 18C and 22C	3.036	3.008	66.3	thrown away	-
+5	Add yesterday's residual (AR(1)) correction to regression	3.036	3.042	19.01	thrown away	-
+6	Add yearly seasonal sine/cosine terms to the regression	3.036	3.094	10.41	thrown away	-
+7	Fit by least absolute deviations instead of least squares	-	-	-	dropped on practice	agent's scorer said 3.036 → 3.186; code lost, not re-measured
+8	Add quadratic heating/cooling degree terms to regression	3.036	3.211	1.96	dropped on practice	Extra flexibility (weekend-temperature interactions, quadratic degree terms) overfits and hurts; the simple linear model is hard to beat.

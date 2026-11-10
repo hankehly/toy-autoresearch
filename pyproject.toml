@@ -11,4 +11,6 @@ dependencies = [
     "pandas==2.2.3",
     # Only the simulations use scipy (scripts/night_sim.py; bundle_sim.py imports it).
     "scipy==1.15.2",
+    # loop.py checks the agent's structured reply against its schema with this.
+    "jsonschema>=4.26.0",
 ]

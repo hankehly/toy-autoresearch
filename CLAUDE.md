@@ -14,9 +14,20 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
 
 ## How it works
 - `loop.py run N`: each turn copies `lab/` to a temp folder, where a fresh `claude -p` agent
-  reads `program.md` and `ledger.tsv`, changes only `model.py`, and checks it with `check.py`.
-  Only `model.py` comes back. `judge/judge.py` compares it with the champion, and it is kept
-  or thrown away and logged in `lab/ledger.tsv`.
+  reads `program.md` and `ledger.tsv`, changes only `model.py`, checks it with `check.py` and
+  scores it against the champion on the practice year with `practice.py`. It finishes with a
+  structured reply (idea, lesson, practice numbers, submit or not), which the loop checks
+  against `REPLY_SCHEMA` in `loop.py`. Only `model.py` comes back. The loop measures it on
+  the practice year itself (`judge.py practice`, in the model sandbox). If the agent
+  submitted it, `judge/judge.py` compares it with the champion on the validation year, and
+  it is kept or thrown away.
+- Two ledgers. `ledger.tsv` at the repo root is the full record, validation scores
+  included, and the try count behind the bar comes from it. `lab/ledger.tsv` is the agent's
+  copy, rewritten from it after every turn: practice numbers, verdict and lesson, and no
+  number from the validation year. Verdicts: `KEPT` and `thrown away` were judged and count
+  as tries; `dropped on practice` (changed, not submitted), `no change`, `crashed` and
+  `invalid reply` weren't and don't. `reply_check` in the full ledger says whether the
+  agent's practice numbers matched the loop's.
 - Isolation (`docker/`). The host runs only code a human wrote (`loop.py`, `judge.py`) and
   holds all the data. The agent works in the agent sandbox, a container that sees only the
   turn's temp folder; its network's only way out is the proxy (squid), which lets through
@@ -76,8 +87,12 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
 ## Open threads
 - Allow practice-year bundles: let the agent submit several ideas that each helped on its
   practice year as one try, and see whether it captures turn 3's real gain.
-- Remaining leak: the agent reads every rejected idea's validation score in the ledger. For long
-  runs, show it only kept / thrown away.
+- The agent's ledger now shows practice numbers and verdicts only (issue #1). Unproven so
+  far: run a real night and see whether practice numbers steer it. What still leaks is one
+  fact per judged idea: whether it cleared the bar.
+- program.md tells the agent to submit only above 90% of practice reshuffles. That number
+  comes from run 2 alone (only turn 3 cleared it) and the loop doesn't enforce it. Revisit
+  it once the full ledger has a few dozen judged ideas.
 - Set near-misses aside and re-test them on new months; never bundle them and re-test on the
   same scored year.
 - Port the judge to the real load-forecasting data. For racing, score by log loss against the
@@ -102,6 +117,11 @@ platform (PySpark, dbt, LightGBM, 20+ years of races).
 - `uv run loop.py reset` returns to the baseline and clears the ledger and history.
 - If you change a sandbox or the messages, run `scripts/test_sandboxes.py`. Docker is a
   strong fence for an over-eager agent, not a guarantee against hostile code.
+- If you change `turn()`, the ledgers or the reply schema, run `scripts/test_loop.py` (about
+  1 minute; real judge and model sandbox, a stand-in agent, no token needed).
+- `lab/practice.py` carries its own copy of the judge's walk and reshuffle, because the
+  agent's workspace has no `judge/`. Change them together; `scripts/test_loop.py` checks
+  that they print the same numbers.
 
 ## How Hank likes explanations
 When using math or formulas, give a plain-English interpretation, a small numeric example
