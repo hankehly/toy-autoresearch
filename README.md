@@ -24,7 +24,7 @@ The smallest working version of an agent research loop, with guards against over
 
 ## One turn of the loop
 
-![One turn: lab/ is copied to a throwaway workspace, the agent changes model.py, the judge keeps or throws it away, and the ledger records the verdict for the next turn](docs/research-loop.drawio.png)
+![One turn: lab/ is copied to a throwaway workspace, the agent changes model.py and replies, the loop measures the change on the practice year, a submitted change goes to the judge, which keeps it or throws it away, every outcome is written to the full ledger, and the next turn's agent reads a copy without the validation columns](docs/research-loop.drawio.png)
 
 The diagram is a `.drawio.png`: it displays as an image and also opens for editing in draw.io.
 
