@@ -8,9 +8,7 @@ Hank wants AI agents to run the iterative research and model-building for predic
 problems that use traditional ML, such as next-day electricity load and horse racing. This
 folder is the smallest working version: a made-up town's daily electricity use, an agent that
 improves `lab/model.py` one idea per turn, and a frozen judge that decides what's kept.
-The lessons are meant to carry over to his real load-forecasting project (a GitHub Project
-used as a research ledger, with kept / rejected / set aside decisions) and his horse racing
-platform (PySpark, dbt, LightGBM, 20+ years of races).
+The lessons are meant to carry over to real problems like these.
 
 ## How it works
 - `loop.py run N`: each turn copies `lab/` to a temp folder, where a fresh `claude -p` agent
