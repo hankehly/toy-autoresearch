@@ -16,9 +16,8 @@ brackets (see the list at the end); the design advice is our synthesis of them.
   Training-run randomness still exists, and a bigger scored set doesn't remove it.
 
 ## Recommended design for forecasting (synthesis)
-1. Research brief: the decision time, what is knowable when, idea families to explore, banned
-   moves, a simplicity rule. Use the Load Forecasting GitHub Project as the agent's memory: it
-   reads Backlog and Decided before proposing, and never re-proposes a decided idea.
+1. Research brief: the decision time, what is knowable when, ideas worth trying, banned moves,
+   a simplicity rule.
 2. Frozen evaluator outside the agent's reach (for example a Cloud Run job that checks out
    the agent's commit and writes to a BigQuery ledger the agent can only read). Invert control:
    the evaluator calls the agent's fit/predict and passes only data from before each
@@ -33,7 +32,7 @@ brackets (see the list at the end); the design advice is our synthesis of them.
    whose data and scores the agent never sees, checked only at milestones; and shadow mode,
    where predictions are logged before the outcomes exist.
 5. Order of work: load forecasting first (less noise, strong baselines, fresh outcomes every
-   day, ledger already exists). Build the evaluator, leakage tests and noise floor; run 20-30
+   day). Build the evaluator, leakage tests and noise floor; run 20-30
    supervised iterations and read every change; then run overnight; then add a reviewer agent
    and the reproduction check; then port to racing. Hold off on parallel agents, since more
    tries mean more lucky winners. Skip Kaggle-style frameworks (R&D-Agent, AIDE): they are
@@ -53,7 +52,7 @@ calls fit/predict), `loop.py` (orchestrator), the holdout (gate 2).
      race being predicted.
    - Fixes: timestamp when every input becomes known. Run a future-poisoning test: rebuild the
      features with everything unknown at decision time scrambled; if any prediction changes,
-     something reads the future. For racing, encode these rules as dbt tests the agent can't edit.
+     something reads the future. For racing, encode these rules as tests the agent can't edit.
 2. Winning the backtest by sheer volume.
    - Example: 100 variants all truly at 3.0% MAPE, each score wobbling by 0.05 points. The
      luckiest is usually about 2.5 wobbles better, so it shows about 2.875%: pure noise.
@@ -96,9 +95,9 @@ calls fit/predict), `loop.py` (orchestrator), the holdout (gate 2).
    - Agents drift toward safe tweaks: in AutoResearchExam, GPT-5.6 Sol spent about 55% of its
      rounds on hyperparameter tuning alone, against about 7% for Fable 5.1 and Opus 5 [6].
      Stacks of noise-level wins make pipelines brittle.
-   - Fixes: leave tuning to Optuna; require each hypothesis to name an idea family; run
-     periodic removal passes (delete a component; keep the deletion if the score holds).
-     Strategies that can be described compactly tend to generalize [7].
+   - Fixes: leave tuning to Optuna; run periodic removal passes (delete a component; keep
+     the deletion if the score holds). Strategies that can be described compactly tend to
+     generalize [7].
 
 ## Reusing a validation set without overfitting it (for the ledger leak)
 The papers call it a holdout; here it is the validation year, whose scores reach the agent
