@@ -131,6 +131,27 @@ their evidence, and ways to reuse a validation set safely, with sources. Importe
 context:
 @docs/research.md
 
+## Communication
+- Speak in simple, plain English whenever possible. Lead with non-technical framing (motivation, what changed, what success looks like) and keep math, code paths, and implementation detail in lower sections or appendices.
+- Decision rules belong in tables with concrete numerical thresholds, not prose.
+
+## Scratch space
+- `scratch/` at the repo root is gitignored and is where anything the work needs but the history does not goes: ad-hoc scripts, probe output, query dumps, run logs, etc.
+- Use it instead of `/tmp`.
+- One directory per piece of work, named `<YYYY-MM-DD>-<slug>` — the date it was created, never renamed afterwards — with the issue number first in the slug when there is one: `scratch/2026-10-04-99-variance-inflation/`, `scratch/2026-10-04-thriftserver-oom/`. So `ls scratch/` reads oldest to newest, which is the only question ever asked of the folder ("what can go?"), and an issue's work is still found with `ls scratch/ | grep 99`. The date is the directory's birthday, not the date of the thing it is about.
+- A dated directory that is worth keeping gets a one-line `README.md` saying what the question was — a month later the slug gives the topic and nothing else.
+- A loose file at the top level (`scratch/probe.py`) means throwaway: it may be deleted at any time, by anyone. Anything that should survive goes in a dated directory. Nothing sweeps the folder automatically; pruning is by hand, by date.
+
+## Git conventions
+- Unless told otherwise, make the code changes for a PR in a separate git worktree under `.claude/worktrees/` (gitignored), not in the main checkout, which stays on `main` for other work.
+- Branches follow [Conventional Branch](https://conventionalbranch.org/)
+- Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
+
+## Code clarity
+- For Python code, always use NumPy-style docstrings (`Parameters` / `Returns` / `Raises` sections with the underlined-header format), not Google-style `Args:`.
+- Use builtin types (`tuple`, `dict`, `list`, `set`) instead of typing module equivalents (`Tuple`, `Dict`, `List`, `Set`).
+- Use `xxx | None` instead of `Optional[xxx]` for optional types.
+
 ## Agent skills
 
 ### Issue tracker
