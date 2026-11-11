@@ -9,7 +9,8 @@ The smallest working version of an agent research loop, with guards against over
     loop.py     each turn: fresh workspace -> fresh agent makes one change -> the loop
                 measures it on the practice year -> judge compares -> keep or throw away -> ledgers
     ledger.tsv  the full ledger, validation scores included; the agent never sees it
-    history/    every model the agent wrote, plus its reply and cost per turn
+    history/    every model the agent wrote, plus Claude Code's whole response for the turn
+                (the reply and the cost, or the errors if the run failed)
     docker/     the two sandboxes and the proxy (Docker images), see "Isolation" below:
                 model-sandbox  where judge.py runs model.py: no internet, no files but model.py
                 agent-sandbox  where the agent works: it sees only the turn's workspace

@@ -250,9 +250,9 @@ def turn(t) -> None:
     if not copy_submission(work, candidate):  # only model.py comes back
         shutil.copy(champion, candidate)      # no plain model.py: the same as changing nothing
     shutil.rmtree(work)
+    # the whole response, not picked fields: a run that fails has "errors" where "result" would be
     (HISTORY / f"turn_{t}.json").write_text(json.dumps({
-        "seconds": round(time.time() - began), "cost_usd": result.get("total_cost_usd"),
-        "structured_output": reply, "agent_reply": result.get("result")}, indent=2))
+        "seconds": round(time.time() - began), "response": result}, indent=2))
 
     # the loop measures practice itself, so the ledger never depends on the agent's own numbers
     changed = candidate.read_bytes() != champion.read_bytes()

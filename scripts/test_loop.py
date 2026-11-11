@@ -252,7 +252,9 @@ check("kept: the agent's copy names the new champion and a higher bar",
 check("workspace: the agent gets practice.py and nothing but the lab files",
       seen["files"] == ["check.py", "data.csv", "ledger.tsv", "model.py", "practice.py", "program.md"], seen["files"])
 saved = json.loads((loop.HISTORY / "turn_1.json").read_text())
-check("history: the turn's structured reply is saved", saved.get("structured_output", {}).get("submit") is True, saved)
+check("history: Claude Code's whole response is saved, the structured reply and the cost included",
+      saved.get("response", {}).get("structured_output", {}).get("submit") is True
+      and saved.get("response", {}).get("total_cost_usd") == 0.1, saved)
 
 # Turn 2: a changed model.py with submit false, and a practice number the agent got wrong.
 row = play(WITH_YESTERDAY, {"structured_output": reply((3.036, 2.5, 100.0), submit=False)})
@@ -267,15 +269,18 @@ check("dropped: the champion stays, and the idea's code is saved in history/",
 check("workspace: tampering with practice.py there changes nothing in lab/",
       (loop.LAB / "practice.py").read_text() == (ROOT / "lab" / "practice.py").read_text())
 
-# Turn 3: Claude Code returned no structured reply, but model.py changed.
-row = play(WITH_YESTERDAY, {"result": "I'd rather not say."})
+# Turn 3: Claude Code gave up on the structured reply, but model.py changed. Its response then
+# has "errors" and a failure subtype in place of "result" and "structured_output".
+GAVE_UP = {"type": "result", "subtype": "error_max_structured_output_retries", "is_error": True,
+           "errors": ["Failed to provide valid structured output after 5 attempts"], "total_cost_usd": 0.2}
+row = play(WITH_YESTERDAY, GAVE_UP)
 check("invalid reply: no structured_output is 'invalid reply'", row["verdict"] == "invalid reply", row["verdict"])
 check("invalid reply: practice is still measured, so the idea's result isn't lost",
       cells(row, *PRACTICE) == ["3.036", "2.88", "99.9"], cells(row, *PRACTICE))
 check("invalid reply: it never reached the judge", cells(row, *VALIDATION) == ["-", "-", "-"], cells(row, *VALIDATION))
 check("invalid reply: the bar doesn't rise", "Ideas judged: 1. The next must win 97.5%" in agent_ledger_top(), agent_ledger_top())
 saved = json.loads((loop.HISTORY / "turn_3.json").read_text())
-check("invalid reply: the raw reply is saved in history/", saved.get("agent_reply") == "I'd rather not say.", saved)
+check("invalid reply: the whole response is saved in history/, so the reason isn't lost", saved.get("response") == GAVE_UP, saved)
 
 # Turns 4-8: replies the schema refuses. Each would otherwise be judged: model.py changed and submit is true.
 good = reply(None, submit=True)
