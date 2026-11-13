@@ -5,8 +5,9 @@
      It finishes with a structured reply: its idea, a lesson, its practice numbers, submit or not
   3. only model.py comes back, and the loop measures it against the champion on the practice
      year itself (the judge does the measuring, in the model sandbox)
-  4. if the agent submitted it, the judge compares it with the champion on the validation
-     months, with a bar that rises with every idea tested (see judge.py)
+  4. if the agent submitted it and it won enough of the practice reshuffles (SUBMIT_PCT),
+     the judge compares it with the champion on the validation months, with a bar that
+     rises with every idea tested (see judge.py)
   5. keep it (new champion) or throw it away, and write the verdict into both ledgers
 
     uv run loop.py run 5     # five more turns (continues from the ledger)
@@ -69,16 +70,21 @@ REPLY_SCHEMA = {
             ],
         },
         "submit": {"type": "boolean",
-                   "description": "true sends model.py to the judge; false logs it as dropped on practice"},
+                   "description": "true asks for model.py to be judged; false logs it as dropped on practice"},
     },
     "required": ["idea", "lesson", "practice", "submit"],
     "additionalProperties": False,
 }
 
+# An idea goes to the judge only if it wins at least this share (in %) of the practice
+# reshuffles, by the loop's own measurement. The agent is told the same: the loop writes the
+# number on top of the agent's ledger, and step 5 of program.md points there.
+# Winning 90% of reshuffles means the gain is about 1.3 times its own luck (one standard
+# deviation of a measured gain), whatever the units: if luck is 0.05 MWh, a gain of about
+# 0.064 MWh. So the same setting fits a noisier or a quieter problem without retuning.
+SUBMIT_PCT = 90
+
 # The steps of a turn are in program.md, the brief you edit.
-# TODO: program.md tells the agent to submit only if model.py wins at least 90% of the practice
-# reshuffles. 90% is a starting guideline, and the loop doesn't enforce it. Revisit it once
-# the full ledger has a few dozen judged ideas: compare practice_wins with the verdicts.
 PROMPT = "Read program.md and follow its steps. Finish with the structured reply."
 AGENT = ["timeout", "1800",                         # a turn still running after 30 minutes is stopped
          "claude", "-p", PROMPT,
@@ -210,13 +216,15 @@ def log(turn, idea, verdict, **cells) -> None:
 
 def write_agent_ledger() -> None:
     """Rewrite the agent's copy from the full ledger: practice numbers, verdicts and lessons,
-    and no number measured on the validation year. The two comment lines on top say what the
-    agent is up against: the champion, and the bar the next idea must clear."""
+    and no number measured on the validation year. The three comment lines on top say what
+    the agent is up against: the champion, the bar the next idea must clear, and the share of
+    practice reshuffles an idea needs before it is judged (SUBMIT_PCT)."""
     rows = read_ledger()
     champion = [r for r in rows if r["verdict"] in CHAMPIONS][-1]
     bar_pct = judge("bar", ideas_judged() + 1)["bar_pct"]
     lines = [f"# Champion: turn {champion['turn']}, practice {champion['practice']} MWh",
              f"# Ideas judged: {ideas_judged()}. The next must win {bar_pct}% of the judge's reshuffles.",
+             f"# To be judged, an idea must win at least {SUBMIT_PCT}% of the practice reshuffles.",
              "\t".join(AGENT_COLUMNS)]
     lines += ["\t".join(r[c] for c in AGENT_COLUMNS) for r in rows]
     AGENT_LEDGER.write_text("\n".join(lines) + "\n")
@@ -279,7 +287,8 @@ def turn(t) -> None:
     if crashed:
         log(t, idea, "crashed", **row)  # only the word: a model's error text could carry anything
         return
-    if not reply["submit"]:
+    # the loop goes by its own practice numbers, so a wrong number in the reply can't get an idea judged
+    if not reply["submit"] or measured["win_pct"] < SUBMIT_PCT:
         log(t, idea, "dropped on practice", **row)
         return
 

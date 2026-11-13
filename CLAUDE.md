@@ -17,14 +17,15 @@ The lessons are meant to carry over to real problems like these.
   structured reply (idea, lesson, practice numbers, submit or not), which the loop checks
   against `REPLY_SCHEMA` in `loop.py`. Only `model.py` comes back. The loop measures it on
   the practice year itself (`judge.py practice`, in the model sandbox). If the agent
-  submitted it, `judge/judge.py` compares it with the champion on the validation year, and
-  it is kept or thrown away.
+  submitted it and the loop measured at least `SUBMIT_PCT` (90%) of practice reshuffles won,
+  `judge/judge.py` compares it with the champion on the validation year, and it is kept or
+  thrown away.
 - Two ledgers. `ledger.tsv` at the repo root is the full record, validation scores
   included, and the try count behind the bar comes from it. `lab/ledger.tsv` is the agent's
   copy, rewritten from it after every turn: practice numbers, verdict and lesson, and no
   number from the validation year. Verdicts: `KEPT` and `thrown away` were judged and count
-  as tries; `dropped on practice` (changed, not submitted), `no change`, `crashed` and
-  `invalid reply` weren't and don't. `reply_check` in the full ledger says whether the
+  as tries; `dropped on practice` (changed, but not submitted or under `SUBMIT_PCT`),
+  `no change`, `crashed` and `invalid reply` weren't and don't. `reply_check` in the full ledger says whether the
   agent's practice numbers matched the loop's.
 - Isolation (`docker/`). The host runs only code a human wrote (`loop.py`, `judge.py`) and
   holds all the data. The agent works in the agent sandbox, a container that sees only the
@@ -88,9 +89,11 @@ The lessons are meant to carry over to real problems like these.
 - The agent's ledger now shows practice numbers and verdicts only (issue #1). Unproven so
   far: run a real night and see whether practice numbers steer it. What still leaks is one
   fact per judged idea: whether it cleared the bar.
-- program.md tells the agent to submit only above 90% of practice reshuffles. That number
-  comes from run 2 alone (only turn 3 cleared it) and the loop doesn't enforce it. Revisit
-  it once the full ledger has a few dozen judged ideas.
+- An idea is judged only if it wins at least 90% of practice reshuffles: `SUBMIT_PCT` in
+  `loop.py`, enforced by the loop and written on top of the agent's ledger, where step 5 of
+  program.md points. 90% means a gain of about 1.3 times its own luck, in any units. It is
+  a starting point (in run 2 only turn 3 would have cleared it). Revisit it once the full
+  ledger has a few dozen judged ideas.
 - Set near-misses aside and re-test them on new months; never bundle them and re-test on the
   same scored year.
 - Port the judge to the real load-forecasting data. For racing, score by log loss against the

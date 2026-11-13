@@ -79,7 +79,10 @@ Checked afterwards on 50 parallel towns: turns 2, 4 and 5 were truly no better, 
 judge was right. Turn 3 was truly better by 0.04 MWh, but one scored year was too small
 to prove it, so both the old and the new rule threw it out. Small exams miss small gains.
 On the practice year, turn 3 is the only one of turns 2-6 to win more than 90% of the
-reshuffles, which is where program.md's guideline for submitting comes from.
+reshuffles. An idea is judged only at 90% or more: `SUBMIT_PCT` in loop.py, which the loop
+enforces with its own practice measurement and writes on top of the agent's ledger. Winning
+90% of reshuffles means a gain of about 1.3 times its own luck, whatever the units, so the
+setting carries over to other problems. (Turns 2-6 were judged before this rule existed.)
 Turns 6 and 7 came later, inside the sandboxes (see "Isolation"). Turn 7 found its idea
 worse on the practice year (3.19 against 3.04, by its own scorer) and dropped it, so it
 didn't count as a try. It also copied the champion back, so that idea's code is lost.
@@ -109,7 +112,7 @@ numbers match the loop's: `ok`, `practice mismatch`, `not run` (the agent report
     verdict              when                                                        a try?
     KEPT                 judged, and cleared the bar                                 yes
     thrown away          judged, and didn't clear it                                 yes
-    dropped on practice  model.py changed, but the agent chose not to submit it      no
+    dropped on practice  not submitted, or won under SUBMIT_PCT of practice          no
     no change            model.py is identical to the champion                       no
     crashed              model.py failed in the loop's practice run or the judge's   no
     invalid reply        no valid structured reply; practice is still measured       no

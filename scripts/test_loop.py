@@ -184,15 +184,17 @@ check("start: the baseline row has its practice score and its validation score",
       cells(row, "turn", "practice", "val_mae", "verdict") == ["0", "5.656", "5.782", "start"], row)
 
 agent_ledger = loop.AGENT_LEDGER.read_text().splitlines()
-check("agent's copy: two comment lines name the champion and the next bar",
-      agent_ledger[:2] == ["# Champion: turn 0, practice 5.656 MWh",
-                           "# Ideas judged: 0. The next must win 95.0% of the judge's reshuffles."], agent_ledger[:2])
+check("agent's copy: three comment lines name the champion, the next bar and when to submit",
+      agent_ledger[:3] == ["# Champion: turn 0, practice 5.656 MWh",
+                           "# Ideas judged: 0. The next must win 95.0% of the judge's reshuffles.",
+                           f"# To be judged, an idea must win at least {loop.SUBMIT_PCT}% of the practice reshuffles."],
+      agent_ledger[:3])
 check("agent's copy: no validation column",
-      agent_ledger[2].split("\t") == ["turn", "idea", "practice_champion", "practice", "practice_wins", "verdict", "lesson"],
-      agent_ledger[2])
-check("agent's copy: the baseline row, without its validation score",
-      agent_ledger[3].split("\t") == ["0", "baseline: average of the last 7 days", "-", "5.656", "-", "start", "-"],
+      agent_ledger[3].split("\t") == ["turn", "idea", "practice_champion", "practice", "practice_wins", "verdict", "lesson"],
       agent_ledger[3])
+check("agent's copy: the baseline row, without its validation score",
+      agent_ledger[4].split("\t") == ["0", "baseline: average of the last 7 days", "-", "5.656", "-", "start", "-"],
+      agent_ledger[4])
 
 
 # --- Turns, with a stand-in for the agent ---------------------------------------------
@@ -317,13 +319,13 @@ row = play(CRASHES, {"structured_output": reply(None, submit=True)})
 check("crashed: a model.py that fails the loop's practice run is 'crashed'",
       cells(row, "verdict", *PRACTICE, *VALIDATION) == ["crashed"] + ["-"] * 6, row)
 
-# Turn 11: model.py gets through the practice year, then crashes on the judge's.
-CRASHES_LATER = REGRESSION.replace("    X = _features([today", '''    if today["date"].year == 2025:
+# Turn 11: model.py wins enough on the practice year to be judged, then crashes on the judge's.
+CRASHES_LATER = WITH_YESTERDAY.replace("    X = _features([today", '''    if today["date"].year == 2025:
         raise ValueError("SECRET-ERROR-TEXT")
     X = _features([today''')
 row = play(CRASHES_LATER, {"structured_output": reply(None, submit=True)})
 check("crashed: a model.py that fails the judge's run is 'crashed', with its practice numbers",
-      cells(row, "verdict", *PRACTICE, *VALIDATION) == ["crashed", "3.036", "3.036", "0.0", "-", "-", "-"], row)
+      cells(row, "verdict", *PRACTICE, *VALIDATION) == ["crashed", "3.036", "2.88", "99.9", "-", "-", "-"], row)
 check("crashed: the agent's copy shows only the word, never the error text",
       "crashed" in loop.AGENT_LEDGER.read_text() and "SECRET" not in loop.AGENT_LEDGER.read_text() + loop.LEDGER.read_text())
 check("crashed: the bar doesn't rise", "Ideas judged: 1. The next must win 97.5%" in agent_ledger_top(), agent_ledger_top())
@@ -341,8 +343,16 @@ check("thrown away: the champion stays", (loop.LAB / "model.py").read_text() == 
 row = play(MISSING, {"structured_output": reply(None, submit=True)})
 check("no change: a missing model.py is 'no change' too", cells(row, "verdict", *VALIDATION) == ["no change", "-", "-", "-"], row)
 
+# Turn 14: submitted, with practice numbers that would pass, but the loop measures 0% of reshuffles.
+row = play(BASELINE, {"structured_output": reply((3.036, 2.9, 95.0), submit=True)})
+check(f"dropped: a submitted idea that wins less than {loop.SUBMIT_PCT}% on practice is 'dropped on practice'",
+      cells(row, "verdict", *PRACTICE) == ["dropped on practice", "3.036", "5.656", "0.0"], row)
+check("dropped: the agent's own practice numbers can't get it judged",
+      cells(row, "reply_check", *VALIDATION) == ["practice mismatch", "-", "-", "-"], row)
+check("dropped: the bar stays where turn 12 left it", "Ideas judged: 2. The next must win 98.33%" in agent_ledger_top(), agent_ledger_top())
 
-# --- After 13 turns: nothing from the validation year has reached the agent ----------
+
+# --- After 14 turns: nothing from the validation year has reached the agent ----------
 
 full, agents = loop.LEDGER.read_text(), loop.AGENT_LEDGER.read_text()
 val_numbers = ["5.782", "2.915", "2.893", "67.91"]  # every validation score and win share the judge gave above
@@ -350,11 +360,11 @@ check("full ledger: holds the validation numbers", all(number in full for number
 check("agent's copy: holds none of them", not any(number in agents for number in val_numbers),
       [number for number in val_numbers if number in agents])
 check("agent's copy: one row per turn, with the verdicts",
-      [line.split("\t")[5] for line in agents.splitlines()[3:]] ==
-      ["start", "KEPT", "dropped on practice"] + ["invalid reply"] * 6 + ["no change", "crashed", "crashed", "thrown away", "no change"],
-      [line.split("\t")[5] for line in agents.splitlines()[3:]])
+      [line.split("\t")[5] for line in agents.splitlines()[4:]] ==
+      ["start", "KEPT", "dropped on practice"] + ["invalid reply"] * 6 + ["no change", "crashed", "crashed", "thrown away", "no change", "dropped on practice"],
+      [line.split("\t")[5] for line in agents.splitlines()[4:]])
 check("workspace: the ledger the agent reads is that copy, not the full ledger",
-      seen["ledger"].splitlines()[2].split("\t") == loop.AGENT_COLUMNS and "67.91" not in seen["ledger"], seen["ledger"].splitlines()[2])
+      seen["ledger"].splitlines()[3].split("\t") == loop.AGENT_COLUMNS and "67.91" not in seen["ledger"], seen["ledger"].splitlines()[3])
 
 
 # --- The schema Claude Code gets is the schema the loop checks -------------------------

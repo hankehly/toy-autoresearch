@@ -21,13 +21,15 @@ for a made-up town of about 10,000 homes.
   verdict and nothing else:
   - `KEPT`: judged, and it cleared the bar. It became the champion.
   - `thrown away`: judged, and it didn't clear the bar.
-  - `dropped on practice`: the agent chose not to submit it, so it was never judged.
+  - `dropped on practice`: never judged, because the agent didn't submit it or it won too
+    few of the practice reshuffles.
   - `crashed`: `model.py` failed when the loop or the judge ran it.
   - `no change`, `invalid reply`: there was nothing to judge.
 
   Only `KEPT` and `thrown away` raise the bar.
 
-  The two lines on top name the champion and the bar the next idea must clear.
+  The three lines on top name the champion, the bar the next idea must clear at the judge,
+  and the share of practice reshuffles an idea must win to be judged.
 
 ## How you're judged
 A judge you can't see runs model.py one month at a time over Jul 2024 - Jun 2025,
@@ -47,7 +49,9 @@ Your shell runs Python only: `python script.py` or `python -c "..."`.
 3. Pick one idea (see Rules and Ideas below) and change `model.py`.
 4. Run `python check.py`, and fix `model.py` if it crashes.
 5. Run `python practice.py champion.py model.py`. Submit only if `model.py` wins at least
-   90% of the practice reshuffles. If it doesn't, you may rework the idea once and run
+   the share of practice reshuffles named on the third line of `ledger.tsv`. The loop
+   measures this itself after your turn, and an idea below that share isn't judged,
+   whatever you reply. If yours falls short, you may rework the idea once and run
    `practice.py` again.
 6. If it still falls short, leave the idea in `model.py` and set `submit` to false. Don't
    copy `champion.py` back: the loop needs the code to score the idea and log it. An idea
