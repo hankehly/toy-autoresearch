@@ -32,7 +32,7 @@ The lessons are meant to carry over to real problems like these.
   turn's temp folder; its network's only way out is the proxy (squid), which lets through
   api.anthropic.com alone. The judge runs `model.py` in the model sandbox (no network,
   read-only, nothing but `model.py`) and talks to it in one-line JSON messages (reveal, fit,
-  predict), revealing each day's load only after the guess. `scripts/test_sandboxes.py`
+  predict), revealing each day's load only after the guess. `tests/test_sandboxes.py`
   proves the isolation holds.
 - Months. Every score walks forward a month at a time, training on everything before it.
   Jan-Jun 2023: training. Jul 2023-Jun 2024: the agent's practice year.
@@ -81,7 +81,7 @@ The lessons are meant to carry over to real problems like these.
    6-line model that read today's load from the judge's loop variable was kept as the 6th
    idea (won 100%; validation 2.14 and holdout 2.06 with noise added, 0.00 without), and it passed
    `check.py`. The holdout agreed, so every statistical guard failed at once. Isolation, not
-   statistics, stops this; the model sandbox now makes it crash (`scripts/test_sandboxes.py`).
+   statistics, stops this; the model sandbox now makes it crash (`tests/test_sandboxes.py`).
 
 ## Open threads
 - Allow practice-year bundles: let the agent submit several ideas that each helped on its
@@ -105,8 +105,9 @@ The lessons are meant to carry over to real problems like these.
   numpy and pandas are pinned to the sandboxes' versions: change them in `pyproject.toml` and
   both sandbox Dockerfiles together. scipy is only for the simulations.
 - `scripts/` holds helpers outside the main loop (`make_data.py`, the simulations). Run them from the repo root.
+- `tests/` holds the two test scripts (`test_sandboxes.py`, `test_loop.py`). Each is a plain script, not pytest: run it from the repo root with `uv run`.
 - Docker Desktop must be running. `uv run loop.py build` builds the three images (`run` and
-  `holdout` do it first anyway); `uv run scripts/test_sandboxes.py` checks the isolation
+  `holdout` do it first anyway); `uv run tests/test_sandboxes.py` checks the isolation
   (about 30 s).
 - The agent sandbox can't use the Mac's Keychain login, so `loop.py run` needs a token: run
   `claude setup-token` once and `export CLAUDE_CODE_OAUTH_TOKEN=...` in the shell. The sandbox
@@ -116,12 +117,12 @@ The lessons are meant to carry over to real problems like these.
   lists every request the agent sent through it, until the next run or test run replaces
   the proxy. Attempts to go around the proxy fail without a trace.
 - `uv run loop.py reset` returns to the baseline and clears the ledger and history.
-- If you change a sandbox or the messages, run `scripts/test_sandboxes.py`. Docker is a
+- If you change a sandbox or the messages, run `tests/test_sandboxes.py`. Docker is a
   strong fence for an over-eager agent, not a guarantee against hostile code.
-- If you change `turn()`, the ledgers or the reply schema, run `scripts/test_loop.py` (about
+- If you change `turn()`, the ledgers or the reply schema, run `tests/test_loop.py` (about
   1 minute; real judge and model sandbox, a stand-in agent, no token needed).
 - `lab/practice.py` carries its own copy of the judge's walk and reshuffle, because the
-  agent's workspace has no `judge/`. Change them together; `scripts/test_loop.py` checks
+  agent's workspace has no `judge/`. Change them together; `tests/test_loop.py` checks
   that they print the same numbers.
 
 ## How Hank likes explanations

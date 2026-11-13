@@ -16,11 +16,12 @@ The smallest working version of an agent research loop, with guards against over
                 agent-sandbox  where the agent works: it sees only the turn's workspace
                 agent-proxy    the agent sandbox's only way out: it lets through Claude's API alone
     scripts/    helpers outside the main loop:
-                test_sandboxes.py  proves the isolation holds (about 30 seconds)
-                test_loop.py       proves each kind of turn is logged as promised (about 1 minute)
                 make_data.py       rebuilds the fake town (seeded, so you get the same data)
                 night_sim.py       simulates whole nights of 300 ideas and checks every keep against the truth
                 bundle_sim.py      tests whether small changes add up when submitted together
+    tests/      checks to run after changing the loop or a sandbox:
+                test_sandboxes.py  proves the isolation holds (about 30 seconds)
+                test_loop.py       proves each kind of turn is logged as promised (about 1 minute)
     docs/       the diagrams below
 
 ## One turn of the loop
@@ -45,8 +46,8 @@ Needs Docker Desktop (running), Claude Code and [uv](https://docs.astral.sh/uv/)
 
     uv sync                           # once: Python 3.12 and the locked packages, into .venv
     uv run loop.py build              # build the Docker images (run and holdout also do this first)
-    uv run scripts/test_sandboxes.py  # check that the isolation holds (about 30 seconds)
-    uv run scripts/test_loop.py       # check the loop's verdicts and ledgers, with a stand-in agent (about 1 minute)
+    uv run tests/test_sandboxes.py    # check that the isolation holds (about 30 seconds)
+    uv run tests/test_loop.py         # check the loop's verdicts and ledgers, with a stand-in agent (about 1 minute)
     claude setup-token                # once: a login token the agent sandbox can use
     export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>
     uv run loop.py run 5              # five agent turns
@@ -173,7 +174,7 @@ finds no route out.
 
 Before the sandboxes, the judge ran `model.py` in its own process, so a 6-line model could
 read today's answer from the judge's variables. It was kept, and the holdout agreed with it.
-`uv run scripts/test_sandboxes.py` now runs four such cheats and checks that each one crashes.
+`uv run tests/test_sandboxes.py` now runs four such cheats and checks that each one crashes.
 
 The proxy stays up after a run. Its log lists every request the agent sent through it, until
 the next run or test run starts a fresh proxy. Attempts to go around the proxy simply fail,

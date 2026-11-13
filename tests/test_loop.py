@@ -1,6 +1,6 @@
 """Proves that a turn of the loop is logged the way the ledgers promise. Run it from the repo root:
 
-    uv run scripts/test_loop.py
+    uv run tests/test_loop.py
 
 Every turn here is a real loop.turn() on a temporary copy of lab/, with the real judge and
 the real model sandbox. Only the agent is replaced: a stand-in that changes model.py and

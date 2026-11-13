@@ -1,6 +1,6 @@
 """Proves that the isolation holds. Run it from the repo root:
 
-    uv run scripts/test_sandboxes.py
+    uv run tests/test_sandboxes.py
 
 The model sandbox: honest models must score exactly what the old judge gave them, and
 models that try to cheat must crash instead of scoring.
