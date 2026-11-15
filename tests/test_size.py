@@ -107,8 +107,10 @@ began = time.time()
 scored = run("judge/judge.py", "score", "val", str(model))
 seconds = time.time() - began
 mae = json.loads(scored.stdout or "{}").get("mae")
-check("the judge scores the baseline on the validation period, with every column reaching the model",
-      scored.returncode == 0 and isinstance(mae, float) and 3 < mae < 9, f"average miss {mae} MWh" if mae else scored.stderr[-300:])
+# 2023-01 to 2025-12 are the toy's own days whatever the settings, and the baseline reads only
+# the last 7 loads, so its score is the one in ledger.tsv: 5.782.
+check("the judge scores the baseline on the validation period, with every column reaching the model: 5.782, as in the ledger",
+      scored.returncode == 0 and mae == 5.782, f"average miss {mae} MWh" if mae else scored.stderr[-300:])
 print(f"TIME  scoring the validation period (one year) took {seconds:.1f} seconds: 365 predictions, each with a history of about 6,900 rows by 303 columns")
 
 

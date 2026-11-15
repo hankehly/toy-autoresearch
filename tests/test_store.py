@@ -16,6 +16,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pandas as pd
+
 ROOT = Path(__file__).resolve().parent.parent
 TMP = Path(tempfile.mkdtemp(prefix="test-store-"))
 os.environ["TOY_DATA"] = str(TMP / "data")  # set before store is imported; the scripts and the judge started below follow it too
@@ -60,6 +62,23 @@ def run(*command) -> subprocess.CompletedProcess:
     """
     no_token = {name: value for name, value in os.environ.items() if name != "CLAUDE_CODE_OAUTH_TOKEN"}
     return subprocess.run([sys.executable, *command], cwd=ROOT, env=no_token, capture_output=True, text=True)
+
+
+def sha256_as_csv(days) -> str:
+    """Hash days the way the old CSV file held them, to compare them with that file.
+
+    Parameters
+    ----------
+    days : pd.DataFrame
+        One row per day: date, temp_forecast, load.
+
+    Returns
+    -------
+    str
+        The SHA-256 of the days written as CSV text, as `shasum -a 256` prints it.
+    """
+    as_csv = days.assign(date=days.date.dt.strftime("%Y-%m-%d")).to_csv(index=False, lineterminator="\n")
+    return hashlib.sha256(as_csv.encode()).hexdigest()
 
 
 def val_scores() -> dict[str, float]:
@@ -110,11 +129,10 @@ check("a month folder is laid out the way Spark writes it: month=2023-01/part.pa
 # The ledger, history/ and the findings in CLAUDE.md describe the 1,096 days that used to be
 # judge/full_data.csv. This is that file's SHA-256 (see it with: git show d7be1ad:judge/full_data.csv | shasum -a 256).
 OLD_CSV_SHA256 = "c8222e82de68e38b777e9c4a1bd5e30c83db93ee37d6c1b1886ff4e27939f506"
-days = store.read(stored)
-as_csv = days.assign(date=days.date.dt.strftime("%Y-%m-%d")).to_csv(index=False, lineterminator="\n")
+original_days = store.read(stored)
 check("the store's 1,096 days are the old judge/full_data.csv, value for value",
-      len(days) == 1096 and hashlib.sha256(as_csv.encode()).hexdigest() == OLD_CSV_SHA256,
-      f"{len(days)} days, columns {list(days.columns)}")
+      len(original_days) == 1096 and sha256_as_csv(original_days) == OLD_CSV_SHA256,
+      f"{len(original_days)} days, columns {list(original_days.columns)}")
 
 january = store.read(["2026-01"], store.FUTURE)
 check("the days after 2025 are whole months of the same three columns",
@@ -164,6 +182,47 @@ check("ingest with an older month adds nothing and removes nothing", file_bytes(
 
 check("after ingest, the judge's scores are the same: nothing reads the new months yet",
       val_scores() == KNOWN_SCORES, val_scores())
+
+
+# --- A write that fails must not leave a month that looks finished ---------------------------
+# What a failed write could leave behind: a month folder with no finished file in it.
+
+(store.STORE / "month=2026-07").mkdir()
+(store.STORE / "month=2026-07" / "part.parquet.unfinished").write_bytes(b"half a file")
+check("a month folder without a finished file is not one of the store's months", store.months()[-1] == "2026-06", store.months()[-1])
+run("scripts/ingest.py", "--through", "2026-07")
+check("ingest completes such a month the next time",
+      store.months()[-1] == "2026-07" and store.read(["2026-07"]).equals(store.read(["2026-07"], store.FUTURE)), store.months()[-1])
+
+december = store.read(["2025-12"])
+cannot_be_written = pd.DataFrame({"date": [1, "one"]})  # numbers and text in one column: Parquet refuses it
+for month in ("2025-12", "2030-01"):
+    try:
+        store.write(month, cannot_be_written)
+    except Exception:
+        pass
+check("a write that fails over a month the store has leaves that month as it was", store.read(["2025-12"]).equals(december))
+check("a write that fails for a new month adds no month", "2030-01" not in store.months(), store.months()[-1])
+
+
+# --- make_data.py with other settings: 2023-01 to 2025-12 are still the same days -----------
+
+made = run("scripts/make_data.py", "--start", "2021-07", "--filler", "2")
+stored = store.months()
+check("make_data.py --start 2021-07 --filler 2 makes a store that starts earlier, with two more columns",
+      made.returncode == 0 and (stored[0], stored[-1]) == ("2021-07", "2025-12")
+      and list(store.read(["2021-07"]).columns) == ["date", "temp_forecast", "load", "filler_001", "filler_002"],
+      made.stderr[-300:] or (stored[:1], stored[-1:]))
+days = store.read([month for month in stored if month >= "2023-01"])[["date", "temp_forecast", "load"]]
+check("with those settings, 2023-01 to 2025-12 are still the old judge/full_data.csv, value for value",
+      len(days) == 1096 and sha256_as_csv(days) == OLD_CSV_SHA256, f"{len(days)} days")
+
+made = run("scripts/make_data.py", "--start", "2024-01")
+stored = store.months()
+check("make_data.py --start 2024-01 makes a store that starts later, with the same days from there on",
+      made.returncode == 0 and stored[0] == "2024-01"
+      and store.read(stored).equals(original_days[original_days.date >= "2024-01-01"].reset_index(drop=True)),
+      made.stderr[-300:] or stored[:1])
 
 
 shutil.rmtree(TMP)
