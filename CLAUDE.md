@@ -27,13 +27,25 @@ The lessons are meant to carry over to real problems like these.
   as tries; `dropped on practice` (changed, but not submitted or under `SUBMIT_PCT`),
   `no change`, `crashed` and `invalid reply` weren't and don't. `reply_check` in the full ledger says whether the
   agent's practice numbers matched the loop's.
+- Data store (`store.py`; `data/`, not in git). One folder per month in the layout Spark
+  writes: `data/store/month=2023-01/part.parquet`, columns `date`, `temp_forecast`, `load`.
+  The loop, the judge and the scripts reach the data only through `store.py`'s functions
+  (list months, read months, write a month), so a real store later changes that one file.
+  `scripts/make_data.py` builds `data/future/` (a pretend future, 2023-01 to 2042-12) and
+  fills the store through 2025-12. `scripts/ingest.py --through 2026-06` moves later months
+  from the future into the store: whole months, never changing one already there. Nothing
+  reads months after 2025-12 yet (issue #4, the as-of date).
 - Isolation (`docker/`). The host runs only code a human wrote (`loop.py`, `judge.py`) and
-  holds all the data. The agent works in the agent sandbox, a container that sees only the
-  turn's temp folder; its network's only way out is the proxy (squid), which lets through
+  holds the whole data store. The agent works in the agent sandbox, a container that sees
+  only the turn's temp folder and, read-only at `/data`, the month folders up to the end of
+  the practice period; its network's only way out is the proxy (squid), which lets through
   api.anthropic.com alone. The judge runs `model.py` in the model sandbox (no network,
-  read-only, nothing but `model.py`) and talks to it in one-line JSON messages (reveal, fit,
-  predict), revealing each day's load only after the guess. `tests/test_sandboxes.py`
-  proves the isolation holds.
+  read-only, nothing but `model.py` and the month folders before the first scored month).
+  The runner loads those months when it starts, and the judge talks to it in one-line JSON
+  messages (fit, predict, reveal): `predict` carries every column of today except `load`,
+  and `reveal` hands over each day's load only after the guess. The months a sandbox can see
+  are exactly the month folders mounted into it. `tests/test_sandboxes.py` proves the
+  isolation holds.
 - Months. Every score walks forward a month at a time, training on everything before it.
   Jan-Jun 2023: training. Jul 2023-Jun 2024: the agent's practice year.
   Jul 2024-Jun 2025: the judge's scored year (validation); the agent never has it.
@@ -41,9 +53,11 @@ The lessons are meant to carry over to real problems like these.
 - Keep rule: reshuffle the 52 scored weeks 10,000 times. The k-th idea tested must win at
   least 1 - 5%/k of reshuffles (95% for the 1st, 99.5% for the 10th, 99.95% for the 100th),
   which keeps the expected number of lucky keeps under one for a 300-idea night.
-- `judge/answer_key.py` is the recipe that made the data (validation 2.83, holdout 2.77 MWh). It is
+- `scripts/answer_key.py` is the recipe that made the data (validation 2.83, holdout 2.77 MWh). It is
   close to the best possible but not a hard floor: adding yesterday's temperatures beats it
-  slightly, because that sharpens the estimate of today's actual temperature.
+  slightly, because that sharpens the estimate of today's actual temperature. A real project
+  has no answer key, so the loop never runs it; score it with
+  `uv run judge/judge.py score val scripts/answer_key.py`.
 - `scripts/night_sim.py` re-implements the judge for speed (it reproduces the judge's scores exactly)
   and simulates whole nights with a random-tweak robot. True error is measured on 100
   parallel towns: the same recipe with fresh weather and noise. If you change the judge's
@@ -102,10 +116,14 @@ The lessons are meant to carry over to real problems like these.
 ## Practical notes
 - uv manages Python 3.12 and the packages (`pyproject.toml`, `uv.lock`). Run everything with
   `uv run` (for example `uv run loop.py run 5`), not `python3`, and add packages with `uv add`.
-  numpy and pandas are pinned to the sandboxes' versions: change them in `pyproject.toml` and
-  both sandbox Dockerfiles together. scipy is only for the simulations.
-- `scripts/` holds helpers outside the main loop (`make_data.py`, the simulations). Run them from the repo root.
-- `tests/` holds the two test scripts (`test_sandboxes.py`, `test_loop.py`). Each is a plain script, not pytest: run it from the repo root with `uv run`.
+  numpy, pandas and pyarrow are pinned to the sandboxes' versions: change them in
+  `pyproject.toml` and both sandbox Dockerfiles together. scipy is only for the simulations.
+- A fresh checkout has no data: run `uv run scripts/make_data.py` once. It makes the same
+  days every time, and `loop.py` and `judge.py` stop with one line asking for it if the
+  store is missing. Setting `TOY_DATA` to a folder points `store.py`, and so everything, at
+  a different data folder; the tests use it to work on a temporary store.
+- `scripts/` holds helpers outside the main loop (`make_data.py`, `ingest.py`, `answer_key.py`, the simulations). Run them from the repo root.
+- `tests/` holds the four test scripts (`test_sandboxes.py`, `test_loop.py`, `test_store.py`, `test_size.py`). Each is a plain script, not pytest: run it from the repo root with `uv run`.
 - Docker Desktop must be running. `uv run loop.py build` builds the three images (`run` and
   `holdout` do it first anyway); `uv run tests/test_sandboxes.py` checks the isolation
   (about 30 s).
@@ -124,6 +142,14 @@ The lessons are meant to carry over to real problems like these.
 - `lab/practice.py` carries its own copy of the judge's walk and reshuffle, because the
   agent's workspace has no `judge/`. Change them together; `tests/test_loop.py` checks
   that they print the same numbers.
+- If you change `store.py`, `scripts/make_data.py` or `scripts/ingest.py`, run
+  `tests/test_store.py` (about 30 s). It holds the SHA-256 of the old `judge/full_data.csv`,
+  so the days 2023-01-01 to 2025-12-31 can't change unnoticed. `tests/test_size.py` scores a
+  20-year, 303-column store and prints the time (about 12 s for the validation period, one year).
+- A model gets its `history` without a copy being made (pandas copy-on-write, switched on
+  in `runner.py`, `lab/practice.py` and `lab/check.py`). Writing to `history` is safe: the
+  next call still sees the original table. Known cost that stays: the runner rebuilds its
+  table once per revealed day.
 
 ## How Hank likes explanations
 When using math or formulas, give a plain-English interpretation, a small numeric example

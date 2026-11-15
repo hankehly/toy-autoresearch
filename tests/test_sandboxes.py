@@ -3,8 +3,10 @@
     uv run tests/test_sandboxes.py
 
 The model sandbox: honest models must score exactly what the old judge gave them, and
-models that try to cheat must crash instead of scoring.
+models that try to cheat must crash instead of scoring. It starts with the months before
+the scored period and no others, and a model's writes to its history don't last.
 The agent sandbox: its only way out is the proxy, which lets through Claude's API alone.
+It has the months up to the end of the practice period, read-only, and none after.
 Only a plain model.py comes back from it, and a run without a login token stops at once.
 Prints PASS or FAIL for each check, and exits with 1 if any check failed.
 """
@@ -20,6 +22,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "judge")]
 import judge  # noqa: E402  (imported after the path is set: these files live in the repo, not here)
 import loop  # noqa: E402
+import store  # noqa: E402
+
+store.need()  # the judge reads the data store
 
 loop.build()  # test the sandboxes as the current files describe them
 TMP = Path(tempfile.mkdtemp(prefix="test-sandboxes-"))
@@ -70,10 +75,28 @@ def predict(state, history, today) -> float:
     return state
 '''
 
+# The runner hands model.py its history without copying it, so a write must stay in the table
+# it was made to. If one reached the next call, these guesses would be 0 and not the 7-day average.
+SEVEN_DAY_AVERAGE_THAT_WRITES_TO_ITS_HISTORY = '''
+def fit(history) -> None:
+    history["dow"] = history["date"].dt.dayofweek  # a new column
+    history.loc[:, "load"] = 0.0                    # and new values over the old ones
+    return None
+
+
+def predict(state, history, today) -> float:
+    assert "dow" not in history.columns, "a column added in an earlier call is still there"
+    guess = history["load"].tail(7).mean()
+    history["dow"] = history["date"].dt.dayofweek
+    history.loc[:, "load"] = 0.0
+    return guess
+'''
+
 honest = [
     ("7-day average that prints", write_model("seven", SEVEN_DAY_AVERAGE_THAT_PRINTS), 5.782),
     ("28-day average learned in fit", write_model("month", MONTH_AVERAGE_LEARNED_IN_FIT), 7.528),
-    ("answer key", ROOT / "judge" / "answer_key.py", 2.830),
+    ("answer key", ROOT / "scripts" / "answer_key.py", 2.830),
+    ("7-day average that writes to its history", write_model("writes", SEVEN_DAY_AVERAGE_THAT_WRITES_TO_ITS_HISTORY), 5.782),
 ]
 for name, path, old_score in honest:
     score = val_score(path)
@@ -96,10 +119,23 @@ def fit(history) -> None:
 def predict(state, history, today) -> float:
     return inspect.currentframe().f_back.f_locals["day"].load  # today's answer, if it's there
 ''',
-    "reads the answer file": f'''
+    "reads the answers from the store on your Mac": f'''
 import pandas as pd
 
-ANSWERS = pd.read_csv("{ROOT / "judge" / "full_data.csv"}", parse_dates=["date"]).set_index("date")["load"]
+ANSWERS = pd.read_parquet("{store.STORE / "month=2024-07" / "part.parquet"}").set_index("date")["load"]
+
+
+def fit(history) -> None:
+    return None
+
+
+def predict(state, history, today) -> float:
+    return ANSWERS[today["date"]]
+''',
+    "reads a validation month from /data": '''
+import pandas as pd
+
+ANSWERS = pd.read_parquet("/data/month=2024-07/part.parquet").set_index("date")["load"]
 
 
 def fit(history) -> None:
@@ -135,6 +171,31 @@ def predict(state, history, today) -> float:
 for i, (name, code) in enumerate(cheats.items()):
     result = val_score(write_model(f"cheat{i}", code))
     check(f"cheat is stopped: {name}", isinstance(result, RuntimeError), f"got {result!r}")
+
+
+# --- The model sandbox: it starts with the months before the scored period, and no others ---
+# The months a sandbox can see are the month folders mounted into it. This model says which
+# is its newest, as its guess: month=2024-06 comes back as 202406.
+
+NAMES_ITS_NEWEST_MONTH = '''
+import os
+
+
+def fit(history) -> None:
+    return None
+
+
+def predict(state, history, today) -> float:
+    return float(max(os.listdir("/data")).removeprefix("month=").replace("-", ""))
+'''
+names_newest = write_model("newest", NAMES_ITS_NEWEST_MONTH)
+for split, newest in [("practice", 202306), ("val", 202406), ("holdout", 202506)]:
+    sandbox = judge.open_model_sandbox(names_newest, split)
+    guess = judge.request(sandbox, {"op": "predict", "today": {"date": "2000-01-01"}})["guess"]
+    sandbox.stdin.close()
+    sandbox.wait()
+    check(f"model sandbox, scoring {split}: its newest month is the one before the first scored month",
+          guess == newest, f"got {guess!r}, expected {newest}")
 
 
 # --- The agent sandbox: only a plain model.py comes back ----------------------------
@@ -196,6 +257,10 @@ print(json.dumps({
     "github": reach("https://github.com/"),
     "github_around_the_proxy": reach("https://github.com/", through_proxy=False),
     "sees_the_repo": os.path.exists(sys.argv[1]),
+    "months": sorted(os.listdir("/data")),
+    # each month folder is its own mount. The mount's read-only flag is the proof: a file that
+    # merely refuses writes could sit on a writable mount
+    "months_are_read_only": all(os.statvfs(f"/data/{month}").f_flag & os.ST_RDONLY for month in os.listdir("/data")),
     "claude_version": subprocess.run(["claude", "--version"], capture_output=True, text=True).stdout,
 }))
 """
@@ -208,6 +273,13 @@ check("agent sandbox can't reach GitHub through the proxy", "403" in seen.get("g
 check("agent sandbox can't go around the proxy",
       seen.get("github_around_the_proxy", "answered") != "answered", seen.get("github_around_the_proxy"))
 check("agent sandbox can't see the repo on your Mac", seen.get("sees_the_repo") is False, seen.get("sees_the_repo"))
+months = seen.get("months") or ["none"]
+check("agent sandbox has the months up to the end of the practice period: 2023-01 to 2024-06",
+      (len(months), months[0], months[-1]) == (18, "month=2023-01", "month=2024-06"), (len(months), months[0], months[-1]))
+check("agent sandbox cannot read any month after the practice period",
+      not any(month > "month=2024-06" for month in months) and len(store.months()) > 18, months[-1])
+check("agent sandbox can't change the months it has: every month folder is mounted read-only",
+      seen.get("months_are_read_only") is True, seen.get("months_are_read_only"))
 check("agent sandbox has the Mac's Claude Code version",
       "2.1.319" in seen.get("claude_version", ""), (seen.get("claude_version") or probe.stderr[-200:]).strip())
 

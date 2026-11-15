@@ -7,8 +7,13 @@ for a made-up town of about 10,000 homes.
 - Every past day: its date, its temperature forecast and its actual load.
 - Today: the date and today's temperature forecast (in C). Not today's load.
 
+## Your data
+`/data` holds 2023-01 to 2024-06, read-only: one folder per month with one Parquet file in
+it, such as `/data/month=2023-01/part.parquet`. The columns are `date`, `temp_forecast` and
+`load`. Explore it freely: `pd.read_parquet("/data")` reads every month as one table, and
+adds a `month` column taken from the folder names.
+
 ## Your files
-- `data.csv`: Jan 2023 - Jun 2024 (date, temp_forecast, load). Explore it freely.
 - `model.py`: the current best model, the champion. You change this file, and only this file.
 - `check.py`: tells you if model.py crashes. It does not score it.
 - `practice.py`: scores two models on the practice year, Jul 2023 - Jun 2024, the way the
@@ -67,8 +72,9 @@ Your shell runs Python only: `python script.py` or `python -c "..."`.
    small to prove on one year, or luck on the practice year. A near-copy is scored on the
    same years, so it will most likely be thrown away too. Try a different idea.
 4. Keep `fit()` and `predict()` working the same way. numpy and pandas only.
-   No reading files inside model.py: the judge runs it in a locked sandbox with no files
-   and no internet, where that crashes.
+   Don't read files inside model.py, `/data` included: `fit()` and `predict()` are handed
+   the history, and that is all the data a model gets. The judge runs model.py in a locked
+   sandbox with no internet, where `/data` stops before the first day it scores.
 5. Keep model.py under 60 lines. When two models tie, the simpler one wins.
 
 ## Ideas worth trying (any order)

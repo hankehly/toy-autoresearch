@@ -1,9 +1,10 @@
 """The frozen judge. The loop calls it; the agent never sees this folder.
 
 The agent's model.py never runs in here, next to the answers. It runs in the model sandbox:
-a locked container (docker/model-sandbox) with no internet and no files except model.py.
-The judge sends it messages, one line of JSON at a time, and reveals each day's actual
-load only after the model has sent back its guess for that day.
+a locked container (docker/model-sandbox) with no internet, and no files from your Mac except
+model.py and the month folders before the first scored month, read-only. The judge sends it
+messages, one line of JSON at a time, and reveals each day's actual load only after the
+model has sent back its guess for that day.
 
     uv run judge/judge.py score val     lab/model.py           # validation, Jul 2024 - Jun 2025: what the agent is graded on
     uv run judge/judge.py score holdout lab/model.py           # holdout, Jul - Dec 2025: scored once, at the end
@@ -11,9 +12,11 @@ load only after the model has sent back its guess for that day.
     uv run judge/judge.py practice champion.py candidate.py    # the same comparison on the practice year, with no bar
     uv run judge/judge.py bar 12                               # the share of reshuffles the 12th idea tested must win
 
-The practice year (Jul 2023 - Jun 2024) is the agent's own: it has those answers in data.csv
-and scores itself there with lab/practice.py. The loop asks the judge for the same numbers,
-so the ledger records a measurement the agent can't touch.
+The practice year (Jul 2023 - Jun 2024) is the agent's own: it has those months of the data
+store and scores itself there with lab/practice.py. The loop asks the judge for the same
+numbers, so the ledger records a measurement the agent can't touch.
+
+The data comes from the data store (store.py). `uv run scripts/make_data.py` builds it.
 """
 import json
 import subprocess
@@ -23,7 +26,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-DATA = pd.read_csv(Path(__file__).parent / "full_data.csv", parse_dates=["date"])
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import store  # noqa: E402  (imported after the path is set: store.py lives in the repo root, not here)
 
 # TODO: Static date ranges. What to do as time passes and new data added?
 MONTHS = {
@@ -41,16 +45,33 @@ FLUKE_BUDGET = 0.05  # the k-th idea tested must win at least 1 - 5%/k of the re
 CRASHED = "model.py crashed or ran out of time (its error, if any, is printed above)"
 
 
-def open_model_sandbox(model_path) -> subprocess.Popen:
-    """Start a model sandbox for model_path. The judge talks to it through stdin and stdout."""
+def open_model_sandbox(model_path, split) -> subprocess.Popen:
+    """Start a model sandbox, ready to be scored on one of the periods.
+
+    Parameters
+    ----------
+    model_path : str or Path
+        The model.py to run.
+    split : str
+        The period to be scored: "practice", "val" or "holdout". The sandbox gets the month
+        folders before that period's first month, and the runner loads them as the model's
+        history when it starts. No later month is in the sandbox.
+
+    Returns
+    -------
+    subprocess.Popen
+        The running sandbox. The judge talks to it through stdin and stdout.
+    """
+    first_scored = f"{MONTHS[split][0]:%Y-%m}"
     return subprocess.Popen([
         "docker", "run", "--rm", "-i", "--pull", "never",
         "--network", "none",                                          # no internet
         "--read-only", "--tmpfs", "/tmp",                             # can't change any file; /tmp vanishes afterwards
         "--user", "65534:65534",                                      # runs as "nobody", not as you
         "--cap-drop", "ALL", "--security-opt", "no-new-privileges",  # can't give itself extra powers
-        "--memory", "2g", "--cpus", "2", "--pids-limit", "64",        # can't hog your Mac
-        "-v", f"{Path(model_path).resolve()}:/sandbox/model.py:ro",   # its one file, read-only
+        "--cpus", "2", "--pids-limit", "64",                          # can't hog your Mac's processors (no memory cap: real data is big)
+        "-v", f"{Path(model_path).resolve()}:/sandbox/model.py:ro",   # its one file of code, read-only
+        *store.mounts([month for month in store.months() if month < first_scored]),  # its history, read-only at /data
         "toy-model-sandbox",
     ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 
@@ -74,29 +95,28 @@ def request(sandbox, message) -> dict:
 
 
 def as_rows(days) -> list[dict]:
-    """Days as plain rows that a message can carry: date, temp_forecast, load."""
+    """Days as plain rows that a message can carry: date, temp_forecast, load and any other column."""
     return days.assign(date=days.date.dt.strftime("%Y-%m-%d")).to_dict("records")
 
 
 def daily_misses(model_path, split) -> np.ndarray:
     """Walk forward one month at a time, like real life.
     fit() learns from every day before the month. predict() sees every day before today,
-    plus today's date and temperature forecast - never today's load. Each day's load is
-    revealed only after the model has guessed it."""
-    sandbox = open_model_sandbox(model_path)
-    # TODO: What happens when full data is many GBs of information?
-    send(sandbox, {"op": "reveal", "days": as_rows(DATA[DATA.date < MONTHS[split][0]])})
+    plus every column of today except its load. Each day's load is revealed only after the
+    model has guessed it.
+    The sandbox starts with the months before the first scored one already in it, so the
+    judge reads only the scored months, one at a time."""
+    sandbox = open_model_sandbox(model_path, split)
     misses = []
-    for start in MONTHS[split]:
+    for month in MONTHS[split]:
         request(sandbox, {"op": "fit"})
-        month = DATA[(DATA.date >= start) & (DATA.date < start + pd.offsets.MonthBegin(1))]
-        for day in month.itertuples():
-            reply = request(sandbox, {"op": "predict", "date": f"{day.date:%Y-%m-%d}", "temp_forecast": day.temp_forecast})
-            guess = float(reply["guess"])
+        for day in as_rows(store.read([f"{month:%Y-%m}"])):
+            today = {column: value for column, value in day.items() if column != "load"}
+            guess = float(request(sandbox, {"op": "predict", "today": today})["guess"])
             if not np.isfinite(guess):
-                raise ValueError(f"prediction for {day.date:%Y-%m-%d} is not a number")
-            misses.append(abs(day.load - guess))
-            send(sandbox, {"op": "reveal", "days": as_rows(month[month.date == day.date])})  # only now is today the past
+                raise ValueError(f"prediction for {day['date']} is not a number")
+            misses.append(abs(day["load"] - guess))
+            send(sandbox, {"op": "reveal", "days": [day]})  # only now is today the past
     sandbox.stdin.close()  # no more messages: the runner finishes and Docker removes the container
     sandbox.wait()
     return np.array(misses)
@@ -149,6 +169,7 @@ def practice(champion_path, candidate_path) -> dict:
 
 
 if __name__ == "__main__":
+    store.need()
     if sys.argv[1] == "score":
         split, path = sys.argv[2], sys.argv[3]
         print(json.dumps({"split": split, "mae": round(float(daily_misses(path, split).mean()), 3)}))
