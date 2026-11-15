@@ -3,6 +3,9 @@
     uv run scripts/make_data.py                                # the toy's data
     uv run scripts/make_data.py --start 2006-01 --filler 300   # a long, wide table (tests/test_size.py)
 
+--start and --filler add earlier days and extra columns. They never change a value of the
+days and columns the toy began with.
+
 It rebuilds two folders from nothing (see store.py for the layout):
   data/future/  every month from --start to 2042-12. Nothing but scripts/ingest.py reads it.
   data/store/   the months up to 2025-12, copied from the future. The loop and the judge
@@ -10,8 +13,9 @@ It rebuilds two folders from nothing (see store.py for the layout):
 
 We write the recipe ourselves, so we know the best score any model could get
 (scripts/answer_key.py). The days 2023-01-01 to 2025-12-31 are the ones the ledger, history/
-and the findings in CLAUDE.md describe, so they must never change: they come from the first
-random generator, in the same order of draws as always. tests/test_store.py checks them.
+and the findings in CLAUDE.md describe, so they must never change, whatever the settings:
+they come from their own random generator, in the same order of draws as always.
+tests/test_store.py checks them.
 """
 import argparse
 import shutil
@@ -90,12 +94,16 @@ def make(start, filler) -> pd.DataFrame:
     pd.DataFrame
         One row per day: date, temp_forecast, load, then the filler columns.
     """
-    # The days up to 2025-12-31 come from one generator and the later days from a second,
-    # so adding the future didn't change a single draw of the days the toy began with.
-    early, spell = town(pd.date_range(f"{start}-01", "2025-12-31", freq="D"), np.random.default_rng(7))
+    # The days the toy began with, 2023-01-01 to 2025-12-31, always come from the same
+    # generator and are always drawn as one run of 1,096 days. Everything else has its own
+    # generator, so no setting can change a single draw of them.
+    first, spell = town(pd.date_range("2023-01-01", "2025-12-31", freq="D"), np.random.default_rng(7))
     later, _ = town(pd.date_range("2026-01-01", "2042-12-31", freq="D"), np.random.default_rng(8), spell)
-    days = pd.concat([early, later], ignore_index=True)
-    # The filler comes from a third generator, for the same reason.
+    days = pd.concat([first, later], ignore_index=True)
+    if start < "2023-01":  # earlier days too. (2023-01-01 still starts with no spell, as it always has.)
+        earlier, _ = town(pd.date_range(f"{start}-01", "2022-12-31", freq="D"), np.random.default_rng(6))
+        days = pd.concat([earlier, days], ignore_index=True)
+    days = days[days.date >= f"{start}-01"].reset_index(drop=True)  # a --start after 2023-01 drops the days before it
     noise = np.random.default_rng(9).normal(size=(len(days), filler))
     names = [f"filler_{i:03d}" for i in range(1, filler + 1)]
     return pd.concat([days, pd.DataFrame(noise, columns=names)], axis=1)

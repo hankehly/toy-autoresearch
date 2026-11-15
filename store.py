@@ -33,9 +33,10 @@ def months(folder=STORE) -> list[str]:
     Returns
     -------
     list[str]
-        The months, oldest first, written like "2023-01".
+        The months, oldest first, written like "2023-01". A month folder counts only once
+        its file is finished, so a write that failed halfway leaves no month behind.
     """
-    return sorted(path.name.removeprefix("month=") for path in folder.glob("month=*"))
+    return sorted(path.parent.name.removeprefix("month=") for path in folder.glob("month=*/part.parquet"))
 
 
 def read(months, folder=STORE) -> pd.DataFrame:
@@ -65,6 +66,10 @@ def read(months, folder=STORE) -> pd.DataFrame:
 def write(month, days, folder=STORE) -> None:
     """Write one month's days as a month folder, replacing the folder's file if it exists.
 
+    The month appears whole or not at all: the days are written to a second file, which
+    takes the real file's name only once it is finished. If the write fails, the month is
+    as it was before: absent, or holding its old days.
+
     Parameters
     ----------
     month : str
@@ -76,7 +81,9 @@ def write(month, days, folder=STORE) -> None:
     """
     path = folder / f"month={month}" / "part.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
-    days.to_parquet(path, index=False)
+    unfinished = path.with_name("part.parquet.unfinished")
+    days.to_parquet(unfinished, index=False)
+    unfinished.replace(path)  # one step, so no reader ever sees half a file
 
 
 def mounts(months) -> list[str]:
