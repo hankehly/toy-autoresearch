@@ -258,7 +258,9 @@ print(json.dumps({
     "github_around_the_proxy": reach("https://github.com/", through_proxy=False),
     "sees_the_repo": os.path.exists(sys.argv[1]),
     "months": sorted(os.listdir("/data")),
-    "can_write_data": os.access("/data/month=2023-01", os.W_OK) or os.access("/data/month=2023-01/part.parquet", os.W_OK),
+    # each month folder is its own mount. The mount's read-only flag is the proof: a file that
+    # merely refuses writes could sit on a writable mount
+    "months_are_read_only": all(os.statvfs(f"/data/{month}").f_flag & os.ST_RDONLY for month in os.listdir("/data")),
     "claude_version": subprocess.run(["claude", "--version"], capture_output=True, text=True).stdout,
 }))
 """
@@ -276,7 +278,8 @@ check("agent sandbox has the months up to the end of the practice period: 2023-0
       (len(months), months[0], months[-1]) == (18, "month=2023-01", "month=2024-06"), (len(months), months[0], months[-1]))
 check("agent sandbox cannot read any month after the practice period",
       not any(month > "month=2024-06" for month in months) and len(store.months()) > 18, months[-1])
-check("agent sandbox can't change the months it has", seen.get("can_write_data") is False, seen.get("can_write_data"))
+check("agent sandbox can't change the months it has: every month folder is mounted read-only",
+      seen.get("months_are_read_only") is True, seen.get("months_are_read_only"))
 check("agent sandbox has the Mac's Claude Code version",
       "2.1.319" in seen.get("claude_version", ""), (seen.get("claude_version") or probe.stderr[-200:]).strip())
 
