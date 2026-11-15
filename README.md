@@ -2,26 +2,40 @@
 
 The smallest working version of an agent research loop, with guards against overfitting.
 
-    lab/        the only things the agent sees: program.md (your brief), model.py,
-                data.csv (Jan 2023 - Jun 2024), check.py, practice.py (scores a change on
-                the practice year), ledger.tsv (the agent's copy of the ledger)
-    judge/      the frozen judge, the full data and the holdout
+    lab/        the agent's files: program.md (your brief), model.py, check.py,
+                practice.py (scores a change on the practice year), ledger.tsv (the agent's
+                copy of the ledger). Its data is not a file here: see data/
+    judge/      the frozen judge
+    store.py    the data store's functions: list months, read months, write a month.
+                The loop, the judge and the scripts reach the data only through them
+    data/       not in git; `uv run scripts/make_data.py` builds it:
+                store/   the data store: one folder per month, month=2023-01/part.parquet
+                         (date, temp_forecast, load). Each sandbox is shown some of these
+                         folders, read-only, and those are the only months it can see
+                future/  a pretend future, 2023-01 to 2042-12, that only ingest.py reads
     loop.py     each turn: fresh workspace -> fresh agent makes one change -> the loop
                 measures it on the practice year -> judge compares -> keep or throw away -> ledgers
     ledger.tsv  the full ledger, validation scores included; the agent never sees it
     history/    every model the agent wrote, plus Claude Code's whole response for the turn
                 (the reply and the cost, or the errors if the run failed)
     docker/     the two sandboxes and the proxy (Docker images), see "Isolation" below:
-                model-sandbox  where judge.py runs model.py: no internet, no files but model.py
-                agent-sandbox  where the agent works: it sees only the turn's workspace
+                model-sandbox  where judge.py runs model.py: no internet, and nothing from your
+                               Mac but model.py and the months before the ones being scored
+                agent-sandbox  where the agent works: it sees only the turn's workspace and
+                               the months up to the end of the practice period
                 agent-proxy    the agent sandbox's only way out: it lets through Claude's API alone
     scripts/    helpers outside the main loop:
                 make_data.py       rebuilds the fake town (seeded, so you get the same data)
+                ingest.py          lets time pass: moves months from the pretend future into the store
+                answer_key.py      the recipe that made the data, as a model: about the best possible score
                 night_sim.py       simulates whole nights of 300 ideas and checks every keep against the truth
                 bundle_sim.py      tests whether small changes add up when submitted together
     tests/      checks to run after changing the loop or a sandbox:
                 test_sandboxes.py  proves the isolation holds (about 30 seconds)
                 test_loop.py       proves each kind of turn is logged as promised (about 1 minute)
+                test_store.py      proves the store holds the same days as ever, and that only
+                                   ingest.py adds months (about 30 seconds)
+                test_size.py       scores a 20-year, 303-column store and prints the time (about 30 seconds)
     docs/       the diagrams below
 
 ## One turn of the loop
@@ -40,14 +54,22 @@ Every score walks forward a month at a time: the model is trained on everything 
 the month, then predicts each day of it. So July 2024 is predicted from 18 months of
 history, June 2025 from 29.
 
+The months above are fixed in the code for now. Real data keeps arriving, so the toy has a
+pretend clock: `uv run scripts/ingest.py --through 2026-06` moves the months up to 2026-06
+from `data/future/` into the store, whole months only, and never changes a month already
+there. Nothing reads the new months yet, so every score stays the same. In a real project
+the job that builds the data does this.
+
 ## Run it
 
 Needs Docker Desktop (running), Claude Code and [uv](https://docs.astral.sh/uv/).
 
     uv sync                           # once: Python 3.12 and the locked packages, into .venv
+    uv run scripts/make_data.py       # once: build data/ (the same days every time; it is not in git)
     uv run loop.py build              # build the Docker images (run and holdout also do this first)
     uv run tests/test_sandboxes.py    # check that the isolation holds (about 30 seconds)
     uv run tests/test_loop.py         # check the loop's verdicts and ledgers, with a stand-in agent (about 1 minute)
+    uv run tests/test_store.py        # check the data store, in a temporary folder (about 30 seconds)
     claude setup-token                # once: a login token the agent sandbox can use
     export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>
     uv run loop.py run 5              # five agent turns
@@ -71,10 +93,13 @@ via `claude -p`; change the model in loop.py). `uv run loop.py reset` clears the
     6     add yearly sine/cosine terms            3.09   10%     2.92   29%    99.2%   thrown away
     7     fit by least absolute deviations        -      -       -      -      -       dropped on practice
     8     add squared heating/cooling degrees     3.21   2%      -      -      -       dropped on practice
-          answer key (the exact recipe)                          2.83                                       2.77
+          answer key (not part of the run)                       2.83                                       2.77
 
 "Won" is the share of 10,000 reshuffles of the year's weeks in which the idea beat the
 champion of the time. The practice columns were measured afterwards, for turns 0-6.
+The answer key is the recipe that made the data, which a real project doesn't have. The
+loop never runs it; `scripts/night_sim.py` prints its scores, and
+`uv run judge/judge.py score val scripts/answer_key.py` gives the same.
 
 Checked afterwards on 50 parallel towns: turns 2, 4 and 5 were truly no better, so the
 judge was right. Turn 3 was truly better by 0.04 MWh, but one scored year was too small
@@ -150,19 +175,23 @@ Whole weeks are re-dealt together because neighbouring days share weather.
 
 ## Isolation
 
-![The agent sandbox, the host and the model sandbox side by side, with the only four things that pass between them: the lab files in, model.py out, messages in, one guess per day out](docs/sandboxes.drawio.png)
+![The agent sandbox, the host and the model sandbox side by side, with the only things that pass between them: the lab files and the agent's months of data in, model.py out, model.py with the earlier months and the messages in, one guess per day out](docs/sandboxes.drawio.png)
 
 Isolation, not instructions, keeps the agent's code away from the answers:
 
 - **The host** (your Mac) runs only code a human wrote, `loop.py` and `judge.py`, and holds
-  all the data, the holdout included.
-- **The agent sandbox** is a container that sees only the turn's workspace. Its network has
-  one way out, the proxy, which lets through Claude's API and refuses everything else. The
-  agent's web tools are off, and only a plain `model.py` comes back from the sandbox.
+  the whole data store, the holdout included.
+- **The agent sandbox** is a container that sees only the turn's workspace and, read-only at
+  `/data`, the month folders up to the end of the practice period. Its network has one way
+  out, the proxy, which lets through Claude's API and refuses everything else. The agent's
+  web tools are off, and only a plain `model.py` comes back from the sandbox.
 - **The model sandbox** is where the judge runs `model.py`: a container with no internet, no
-  writable files, and nothing from your Mac except `model.py` itself, read-only. The judge
-  sends it messages, one line of JSON at a time, and reveals each day's load only after the
-  model has guessed it.
+  writable files, and nothing from your Mac except `model.py` itself and the month folders
+  before the first scored month, all read-only. The judge sends it messages, one line of
+  JSON at a time, and reveals each day's load only after the model has guessed it.
+
+The months a sandbox can see are exactly the month folders mounted into it. A month that
+isn't mounted isn't there to be read, whatever the code inside tries.
 
 The networks behind this: a container can reach only what's on the networks it's plugged
 into. The agent sandbox is plugged into one internal network, whose only other member is the
@@ -174,7 +203,7 @@ finds no route out.
 
 Before the sandboxes, the judge ran `model.py` in its own process, so a 6-line model could
 read today's answer from the judge's variables. It was kept, and the holdout agreed with it.
-`uv run tests/test_sandboxes.py` now runs four such cheats and checks that each one crashes.
+`uv run tests/test_sandboxes.py` now runs five such cheats and checks that each one crashes.
 
 The proxy stays up after a run. Its log lists every request the agent sent through it, until
 the next run or test run starts a fresh proxy. Attempts to go around the proxy simply fail,

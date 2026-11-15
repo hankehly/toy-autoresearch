@@ -18,7 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import loop  # noqa: E402  (imported after the path is set: loop.py lives in the repo root, not here)
+import store  # noqa: E402
 
+store.need()  # the judge and the agent sandbox read the data store
 loop.build()  # the judge runs every model in the model sandbox
 TMP = Path(tempfile.mkdtemp(prefix="test-loop-"))
 failures = 0
@@ -123,18 +125,39 @@ check("judge's validation verdict is unchanged (turn 3 of the example run)",
 
 
 # --- lab/practice.py gives the agent the same practice numbers ----------------------
-# It runs where the agent runs it: in the agent sandbox, here with no network at all.
+# It runs where the agent runs it: in the agent sandbox, with the agent's months at /data,
+# here with no network at all.
 
-def run_practice(champion_code, model_code) -> dict:
-    """What practice.py prints for these two models, as {name: number}, or its error."""
+def in_agent_sandbox(champion_code, model_code, *command) -> subprocess.CompletedProcess:
+    """Run a command in an agent sandbox, as the agent would.
+
+    Parameters
+    ----------
+    champion_code : str
+        The code saved as champion.py in the sandbox's workspace.
+    model_code : str
+        The code saved as model.py there.
+    *command : str
+        The command to run in the workspace, which also holds practice.py and check.py.
+
+    Returns
+    -------
+    subprocess.CompletedProcess
+        The finished run, with what it printed.
+    """
     work = Path(tempfile.mkdtemp(prefix="practice-", dir=TMP))
-    for name in ("practice.py", "data.csv"):
+    for name in ("practice.py", "check.py"):
         shutil.copy(ROOT / "lab" / name, work / name)
     (work / "champion.py").write_text(champion_code)
     (work / "model.py").write_text(model_code)
-    run = subprocess.run(["docker", "run", "--rm", "--pull", "never", "--network", "none", "-v", f"{work}:/work",
-                          "toy-agent-sandbox", "python", "practice.py", "champion.py", "model.py"],
-                         capture_output=True, text=True)
+    return subprocess.run(["docker", "run", "--rm", "--pull", "never", "--network", "none", "-v", f"{work}:/work",
+                           *store.mounts(loop.agent_months()), "toy-agent-sandbox", *command],
+                          capture_output=True, text=True)
+
+
+def run_practice(champion_code, model_code) -> dict:
+    """What practice.py prints for these two models, as {name: number}, or its error."""
+    run = in_agent_sandbox(champion_code, model_code, "python", "practice.py", "champion.py", "model.py")
     lines = [line.split() for line in run.stdout.splitlines() if ":" in line]
     return {words[0].rstrip(":"): float(words[1]) for words in lines} or {"error": run.stderr[-300:]}
 
@@ -148,6 +171,35 @@ judged = loop.judge("practice", regression, TMP / "yesterday.py")
 check("practice.py and the judge agree on a close call (turn 3: 3.036 -> 2.880)",
       printed == {"champion_mae": 3.036, "model_mae": 2.88, "wins_pct": judged.get("win_pct")}, f"{printed} vs {judged}")
 
+# practice.py and check.py hand a model its history without copying it, as the judge's sandbox
+# does. A write must stay in the table it was made to, or this model would crash: it checks,
+# on every call, that nothing written in an earlier call is still there.
+BASELINE_THAT_WRITES_TO_ITS_HISTORY = '''
+def fit(history) -> None:
+    assert history["load"].min() > 0, "loads written in an earlier call are still there"
+    history["dow"] = history["date"].dt.dayofweek  # a new column
+    history.loc[:, "load"] = 0.0                    # and new values over the old ones
+    return None
+
+
+def predict(state, history, today) -> float:
+    assert "dow" not in history.columns, "a column added in an earlier call is still there"
+    assert history["load"].min() > 0, "loads written in an earlier call are still there"
+    guess = history["load"].tail(7).mean()
+    history["dow"] = history["date"].dt.dayofweek
+    history.loc[:, "load"] = 0.0
+    return guess
+'''
+printed = run_practice(BASELINE, BASELINE_THAT_WRITES_TO_ITS_HISTORY)
+check("practice.py: a model that writes to its history scores as the baseline does, 5.656",
+      printed == {"champion_mae": 5.656, "model_mae": 5.656, "wins_pct": 0.0}, printed)
+judged = loop.judge("score", "practice", write_model("writes", BASELINE_THAT_WRITES_TO_ITS_HISTORY))
+check("the judge: the same model scores 5.656 there too", judged.get("mae") == 5.656, judged)
+
+checked = in_agent_sandbox(BASELINE, BASELINE_THAT_WRITES_TO_ITS_HISTORY, "python", "check.py")
+check("check.py runs that model on the agent's last two months, 2024-05 and 2024-06, and its writes don't last there either",
+      checked.stdout.strip() == "OK: model.py ran on 61 days without crashing.", checked.stdout.strip() or checked.stderr[-300:])
+
 
 # --- A temporary lab for the loop to work on -----------------------------------------
 # The loop's folders are pointed at copies, so the real lab/, history/ and ledgers stay as they are.
@@ -155,7 +207,7 @@ check("practice.py and the judge agree on a close call (turn 3: 3.036 -> 2.880)"
 loop.LAB, loop.HISTORY = TMP / "lab", TMP / "history"
 loop.LEDGER, loop.AGENT_LEDGER = TMP / "ledger.tsv", TMP / "lab" / "ledger.tsv"
 loop.LAB.mkdir()
-for name in ("program.md", "check.py", "practice.py", "data.csv"):
+for name in ("program.md", "check.py", "practice.py"):
     shutil.copy(ROOT / "lab" / name, loop.LAB / name)
 (loop.LAB / "model.py").write_text(BASELINE)
 
@@ -251,8 +303,8 @@ check("kept: the agent's copy names the new champion and a higher bar",
       loop.AGENT_LEDGER.read_text().splitlines()[:2] == ["# Champion: turn 1, practice 3.036 MWh",
                                                          "# Ideas judged: 1. The next must win 97.5% of the judge's reshuffles."],
       loop.AGENT_LEDGER.read_text().splitlines()[:2])
-check("workspace: the agent gets practice.py and nothing but the lab files",
-      seen["files"] == ["check.py", "data.csv", "ledger.tsv", "model.py", "practice.py", "program.md"], seen["files"])
+check("workspace: the agent gets practice.py and nothing but the lab files: the data is no longer copied in",
+      seen["files"] == ["check.py", "ledger.tsv", "model.py", "practice.py", "program.md"], seen["files"])
 saved = json.loads((loop.HISTORY / "turn_1.json").read_text())
 check("history: Claude Code's whole response is saved, the structured reply and the cost included",
       saved.get("response", {}).get("structured_output", {}).get("submit") is True

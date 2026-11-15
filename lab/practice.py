@@ -13,26 +13,42 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+pd.options.mode.copy_on_write = True  # as in the judge's sandbox: a model gets its history without a copy being made
+
 MONTHS = pd.date_range("2023-07-01", "2024-06-01", freq="MS")  # the practice year
 WEEKS = 52           # the year in 7-day blocks (the last block has 9 days: 366 = 51 x 7 + 9)
 RESHUFFLES = 10_000  # how many times we re-deal the weeks
 
 
+def read_data() -> pd.DataFrame:
+    """Read every month folder at /data as one table.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per day, oldest first, numbered from 0.
+    """
+    files = sorted(Path("/data").glob("month=*/part.parquet"))  # one file per month, oldest first
+    return pd.concat([pd.read_parquet(file) for file in files], ignore_index=True)
+
+
 def daily_misses(model_file, data) -> np.ndarray:
     """Walk forward one month at a time, exactly like the judge.
     fit() learns from every day before the month. predict() sees every day before today,
-    plus today's date and temperature forecast - never today's load."""
+    plus every column of today except its load.
+    The history a model gets is the rows of data before today, not a copy of them. If the
+    model writes to it, pandas copies what it writes to, so data itself never changes."""
     model = importlib.import_module(Path(model_file).stem)
     misses = []
     for start in MONTHS:
-        state = model.fit(data[data.date < start].copy())
         month = data[(data.date >= start) & (data.date < start + pd.offsets.MonthBegin(1))]
-        for day in month.itertuples():
-            today = {"date": day.date, "temp_forecast": day.temp_forecast}
-            guess = float(model.predict(state, data[data.date < day.date].copy(), today))
+        state = model.fit(data.iloc[:month.index[0]])  # every row before the month
+        for i, day in zip(month.index, month.to_dict("records")):
+            today = {column: value for column, value in day.items() if column != "load"}
+            guess = float(model.predict(state, data.iloc[:i], today))  # every row before today
             if not np.isfinite(guess):  # the judge counts this as a crash
-                raise ValueError(f"{model_file}: prediction for {day.date:%Y-%m-%d} is not a number")
-            misses.append(abs(day.load - guess))
+                raise ValueError(f"{model_file}: prediction for {day['date']:%Y-%m-%d} is not a number")
+            misses.append(abs(day["load"] - guess))
     return np.array(misses)
 
 
@@ -50,7 +66,7 @@ def win_share(old, new) -> float:
 
 if __name__ == "__main__":
     champion_file, model_file = sys.argv[1], sys.argv[2]
-    data = pd.read_csv("data.csv", parse_dates=["date"])
+    data = read_data()
     old = daily_misses(champion_file, data)
     new = daily_misses(model_file, data)
     print(f"champion_mae: {old.mean():.3f}   average miss of {champion_file} on the practice year, in MWh")

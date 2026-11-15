@@ -1,7 +1,8 @@
 """The research loop. Each turn:
   1. copy lab/ into a fresh, empty workspace
   2. a fresh Claude Code session reads program.md + ledger.tsv and changes model.py. It works
-     in the agent sandbox: a container that sees only that workspace and reaches only Claude's API.
+     in the agent sandbox: a container that sees only that workspace and the months of the
+     data store up to the end of the practice period, and reaches only Claude's API.
      It finishes with a structured reply: its idea, a lesson, its practice numbers, submit or not
   3. only model.py comes back, and the loop measures it against the champion on the practice
      year itself (the judge does the measuring, in the model sandbox)
@@ -14,6 +15,8 @@
     uv run loop.py holdout   # score the holdout once, at the end: Jul - Dec 2025
     uv run loop.py reset     # back to the baseline
     uv run loop.py build     # build the Docker images (run and holdout do this first anyway)
+
+The data comes from the data store (store.py). `uv run scripts/make_data.py` builds it.
 """
 import json
 import os
@@ -25,6 +28,8 @@ import time
 from pathlib import Path
 
 import jsonschema
+
+import store
 
 ROOT = Path(__file__).parent.resolve()
 LAB, JUDGE, HISTORY = ROOT / "lab", ROOT / "judge", ROOT / "history"
@@ -40,7 +45,8 @@ COLUMNS = ["turn", "idea", "practice_champion", "practice", "practice_wins",
 AGENT_COLUMNS = ["turn", "idea", "practice_champion", "practice", "practice_wins", "verdict", "lesson"]
 TRIED = ("KEPT", "thrown away")  # the verdicts that count as a try, so they raise the bar
 CHAMPIONS = ("start", "KEPT")    # the verdicts whose model became the champion
-AGENT_FILES = ["program.md", "model.py", "check.py", "practice.py", "data.csv", "ledger.tsv"]
+AGENT_FILES = ["program.md", "model.py", "check.py", "practice.py", "ledger.tsv"]
+AGENT_THROUGH = "2024-06"  # the newest month the agent has: the end of the practice period (MONTHS in judge.py and lab/practice.py)
 IMAGES = ["model-sandbox", "agent-sandbox", "agent-proxy"]  # folders in docker/, each built as the Docker image toy-<name>
 NETWORK = "toy-agent-net"  # the agent sandbox's network: its only way out is the proxy
 PROXY = "toy-agent-proxy"  # the proxy's container: squid, which lets through Claude's API alone
@@ -133,15 +139,29 @@ def start_proxy() -> None:
     raise RuntimeError(f"the proxy didn't start; see: docker logs {PROXY}")
 
 
+def agent_months() -> list[str]:
+    """List the months of the data store the agent has.
+
+    Returns
+    -------
+    list[str]
+        Every month in the store up to the end of the practice period, oldest first,
+        written like "2023-01".
+    """
+    return [month for month in store.months() if month <= AGENT_THROUGH]
+
+
 def agent_sandbox(work) -> list[str]:
     """The docker command that starts the agent sandbox, up to the image name. The sandbox
-    sees only the turn's workspace, and its only way out is the proxy."""
+    sees only the turn's workspace and the agent's months of the data store, and its only
+    way out is the proxy."""
     return ["docker", "run", "--rm", "--pull", "never",
             "--network", NETWORK,                                  # no internet, except through the proxy
             "-e", f"HTTPS_PROXY=http://{PROXY}:3128",              # so Claude Code sends its requests to the proxy
             "-e", "CLAUDE_CODE_OAUTH_TOKEN",                       # your login token, passed on by name from your shell
             "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",    # no update checks or error reports
-            "-v", f"{work}:/work",                                 # the turn's workspace: the only folder from your Mac
+            "-v", f"{work}:/work",                                 # the turn's workspace: the only folder it can change
+            *store.mounts(agent_months()),                         # the agent's months, read-only at /data
             "toy-agent-sandbox"]
 
 
@@ -313,9 +333,6 @@ def holdout() -> None:
         if r["verdict"] in CHAMPIONS:
             holdout_mae = judge("score", "holdout", HISTORY / f"turn_{r['turn']}.py")["mae"]
             print(f"{'turn ' + r['turn'] + ': ' + r['idea']:<58.58}{float(r['val_mae']):>6.2f}{holdout_mae:>9.2f}")
-    key = JUDGE / "answer_key.py"
-    val_mae, holdout_mae = judge("score", "val", key)["mae"], judge("score", "holdout", key)["mae"]
-    print(f"{'answer key (the exact recipe; about the best possible)':<58}{val_mae:>6.2f}{holdout_mae:>9.2f}")
 
 
 def reset() -> None:
@@ -330,6 +347,7 @@ if __name__ == "__main__":
     if cmd == "build":
         build()
     elif cmd == "run":
+        store.need()
         need_login_token()
         build()
         start_proxy()
@@ -339,6 +357,7 @@ if __name__ == "__main__":
         for t in range(last + 1, last + 1 + int(sys.argv[2] if len(sys.argv) > 2 else 5)):
             turn(t)
     elif cmd == "holdout":
+        store.need()
         build()
         holdout()
     elif cmd == "reset":
