@@ -93,7 +93,7 @@ Needs Docker Desktop (running), Claude Code and [uv](https://docs.astral.sh/uv/)
 
     uv sync                           # once: Python 3.12 and the locked packages, into .venv
     uv run scripts/make_data.py       # once: build data/ (the same days every time; it is not in git)
-    uv run loop.py build              # build the Docker images (run and holdout also do this first)
+    uv run loop.py build              # build the Docker images (run, advance and holdout also do this first)
     uv run tests/test_sandboxes.py    # check that the isolation holds (about 30 seconds)
     uv run tests/test_loop.py         # check the loop's verdicts and ledgers, with a stand-in agent (about 1 minute)
     uv run tests/test_store.py        # check the data store, in a temporary folder (about 30 seconds)
@@ -125,8 +125,8 @@ via `claude -p`; change the model in loop.py). `uv run loop.py reset` clears the
     8     add squared heating/cooling degrees     3.21   2%      -      -      -       dropped on practice
           answer key (not part of the run)                       2.83                                       2.77
 
-Every row was measured under the as-of date 2025-12: the practice year is 2023-07 to
-2024-06, the validation year 2024-07 to 2025-06 and the holdout 2025-07 to 2025-12.
+Every row was measured under the as-of date 2025-12: the practice period is 2023-07 to
+2024-06, the validation period 2024-07 to 2025-06 and the holdout period 2025-07 to 2025-12.
 "Won" is the share of 10,000 reshuffles of the year's weeks in which the idea beat the
 champion of the time. The practice columns were measured afterwards, for turns 0-6.
 The answer key is the recipe that made the data, which a real project doesn't have. The
@@ -251,4 +251,4 @@ and leave no trace there.
 
 What the sandboxes don't fix: Docker is a strong fence for an over-eager agent, not a
 guarantee against hostile code. And each verdict still tells the agent one thing about the
-judge's year: whether that idea cleared the bar.
+judge's period: whether that idea cleared the bar.

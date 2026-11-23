@@ -193,12 +193,12 @@ def predict(state, history, today) -> float:
     return float(max(os.listdir("/data")).removeprefix("month=").replace("-", ""))
 '''
 names_newest = write_model("newest", NAMES_ITS_NEWEST_MONTH)
-for split, newest in [("practice", 202306), ("val", 202406), ("holdout", 202506)]:
-    sandbox = judge.open_model_sandbox(names_newest, split)
+for period, newest in [("practice", 202306), ("val", 202406), ("holdout", 202506)]:
+    sandbox = judge.open_model_sandbox(names_newest, period)
     guess = judge.request(sandbox, {"op": "predict", "today": {"date": "2000-01-01"}})["guess"]
     sandbox.stdin.close()
     sandbox.wait()
-    check(f"model sandbox, scoring {split}: its newest month is the one before the first scored month",
+    check(f"model sandbox, scoring {period}: its newest month is the one before the first scored month",
           guess == newest, f"got {guess!r}, expected {newest}")
 
 

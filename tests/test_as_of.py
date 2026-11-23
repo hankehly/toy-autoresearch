@@ -71,15 +71,34 @@ def run(*command) -> subprocess.CompletedProcess:
 
 
 def write_model(name, code) -> Path:
-    """Save a test model as <TMP>/<name>.py and return its path."""
+    """Save a test model in the temporary folder.
+
+    Parameters
+    ----------
+    name : str
+        The file's name, without ".py".
+    code : str
+        The model's code.
+
+    Returns
+    -------
+    Path
+        Where it was saved: <TMP>/<name>.py.
+    """
     path = TMP / f"{name}.py"
     path.write_text(code)
     return path
 
 
 def periods() -> dict:
-    """What `judge.py periods` prints: the as-of date, and each period's first month, last
-    month and number of months. If the judge stopped, the line it stopped with."""
+    """Ask the judge for the periods, with `judge.py periods`.
+
+    Returns
+    -------
+    dict
+        "as_of", the as-of date, and for each period its first month, its last month and
+        how many months it has. If the judge stopped: "stopped", the line it stopped with.
+    """
     printed = run("judge/judge.py", "periods")
     if printed.returncode != 0:
         return {"stopped": printed.stderr.strip()}
@@ -88,7 +107,20 @@ def periods() -> dict:
 
 
 def score(period, model_path) -> float | None:
-    """A model's average miss on a period ("practice", "val" or "holdout"), as `judge.py score` prints it."""
+    """Score a model on one period, with `judge.py score`.
+
+    Parameters
+    ----------
+    period : str
+        "practice", "val" or "holdout".
+    model_path : Path
+        The model to score.
+
+    Returns
+    -------
+    float or None
+        Its average miss in MWh, or None if the judge printed no score.
+    """
     return json.loads(run("judge/judge.py", "score", period, str(model_path)).stdout or "{}").get("mae")
 
 
@@ -177,15 +209,21 @@ PERIODS = {
 # --- No date is written into the code or the brief ----------------------------------------
 # The periods come from the as-of date, so a date typed into these files would go stale at the
 # next advance. A written-out date is a four-digit year, or two month names side by side.
-# lab/ledger.tsv is left out: it is a record, and its as_of column holds months.
+# lab/ledger.tsv is not searched: it is a record, and its as_of column holds months.
 
 MONTH = "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
 WRITTEN_DATE = re.compile(rf"\b(?:19|20)\d\d\b|\b{MONTH}\W{{0,3}}{MONTH}\b")
-searched = [ROOT / "loop.py"] + [path for folder in ("judge", "lab", "docker") for path in sorted((ROOT / folder).rglob("*"))
-                                 if path.is_file() and "__pycache__" not in path.parts and path != ROOT / "lab" / "ledger.tsv"]
-found = [f"{path.relative_to(ROOT)}:{number}: {line.strip()[:60]}" for path in searched
-         for number, line in enumerate(path.read_text().splitlines(), 1) if WRITTEN_DATE.search(line)]
-check(f"no written-out date in loop.py, judge/, lab/ or docker/ ({len(searched)} files searched)", not found, found[:5])
+searched = [ROOT / "loop.py"]
+for folder in ("judge", "lab", "docker"):
+    # the code, the brief and the sandboxes' files. Nothing else: a stray file that isn't text would stop the search
+    searched += [path for path in sorted((ROOT / folder).rglob("*"))
+                 if path.suffix in (".py", ".md", ".conf") or path.name == "Dockerfile"]
+dates_found = []
+for path in searched:
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        if WRITTEN_DATE.search(line):
+            dates_found.append(f"{path.relative_to(ROOT)}:{number}: {line.strip()[:60]}")
+check(f"no written-out date in loop.py, judge/, lab/ or docker/ ({len(searched)} files searched)", not dates_found, dates_found[:5])
 check("the search itself finds a year, a month beside a year, and two months side by side",
       all(WRITTEN_DATE.search(text) for text in ("through 2024-06", "Jul 2023", "Jan-Jun", "July - December")))
 
@@ -259,11 +297,36 @@ def play(model_code) -> dict[str, str]:
 
 
 def cells(row, *names) -> list[str]:
+    """Pick cells from a ledger row.
+
+    Parameters
+    ----------
+    row : dict[str, str]
+        A row of the full ledger.
+    *names : str
+        The columns wanted.
+
+    Returns
+    -------
+    list[str]
+        Their cells, in the order asked for.
+    """
     return [row[name] for name in names]
 
 
 def stops(action) -> str:
-    """Run something that should stop the program. Returns the line it stopped with, or "" if it didn't stop."""
+    """Run something that may stop the program, such as loop.advance.
+
+    Parameters
+    ----------
+    action : callable
+        What to run. Whatever it prints is thrown away.
+
+    Returns
+    -------
+    str
+        The line it stopped with, or "" if it ran to the end.
+    """
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             action()
@@ -273,14 +336,30 @@ def stops(action) -> str:
 
 
 def agent_ledger() -> list[str]:
-    """The lines of the agent's copy of the ledger."""
+    """Read the agent's copy of the ledger.
+
+    Returns
+    -------
+    list[str]
+        Its lines: three comment lines, the column names, then one line per row.
+    """
     return loop.AGENT_LEDGER.read_text().splitlines()
 
 
 def in_agent_sandbox(*command) -> str:
     """Run a command in an agent sandbox with the agent's months at /data and no network.
     Its workspace holds practice.py, the regression as champion.py and WITH_YESTERDAY as model.py.
-    Returns what the command printed, or the end of its error."""
+
+    Parameters
+    ----------
+    *command : str
+        The command to run in the workspace.
+
+    Returns
+    -------
+    str
+        What the command printed, or the end of its error.
+    """
     work = Path(tempfile.mkdtemp(prefix="agent-", dir=TMP))
     shutil.copy(ROOT / "lab" / "practice.py", work / "practice.py")
     (work / "champion.py").write_text(REGRESSION)
@@ -291,7 +370,13 @@ def in_agent_sandbox(*command) -> str:
 
 
 def practice_printed() -> dict[str, float]:
-    """What practice.py prints in the agent sandbox for the regression against WITH_YESTERDAY, as {name: number}."""
+    """Run practice.py in the agent sandbox, for the regression against WITH_YESTERDAY.
+
+    Returns
+    -------
+    dict[str, float]
+        The three numbers it prints, by name: champion_mae, model_mae and wins_pct.
+    """
     lines = [line.split() for line in in_agent_sandbox("python", "practice.py", "champion.py", "model.py").splitlines() if ":" in line]
     return {words[0].rstrip(":"): float(words[1]) for words in lines}
 
