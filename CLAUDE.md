@@ -72,7 +72,8 @@ The lessons are meant to carry over to real problems like these.
 - `loop.py advance`, by hand, between nights: moves the as-of date to the store's newest
   month (one month or many), measures the champion on the new practice and validation
   periods, and adds the `advanced` row. It changes no model and scores nothing on the
-  holdout period. If the champion can't be measured, the as-of date is put back. With
+  holdout period. An advance happens whole or not at all: if it is cut short (the champion
+  can't be measured, a timeout, Ctrl-C), the as-of date and both ledgers are put back. With
   nothing newer in the store it stops. `loop.py reset` puts the as-of date back to the one
   in the ledger's `start` row and leaves the store alone. `loop.py holdout` prints each
   model's validation score measured now, beside its holdout score.

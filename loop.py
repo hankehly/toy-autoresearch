@@ -418,14 +418,15 @@ def advance() -> None:
     ------
     SystemExit
         If the store has no month later than the as-of date, or the champion can't be
-        measured. However the measuring ends without its scores (the judge's error, a
-        timeout, Ctrl-C), the as-of date is put back first, so it never moves without its row.
+        measured. An advance happens whole or not at all: however it is cut short (the
+        judge's error, a timeout, Ctrl-C), the as-of date and both ledgers are put back first.
     """
     old, new = as_of(), store.months()[-1]
     if new <= old:
         sys.exit(f"Nothing to advance to: the as-of date is {old}, and the data store's newest month is {new}.")
     if not LEDGER.exists():
         start()  # as `run` does: the baseline's row records the as-of date the research started under
+    before = {path: path.read_bytes() for path in (AS_OF, LEDGER, AGENT_LEDGER)}  # the three files an advance writes
     AS_OF.write_text(new + "\n")  # first, because the judge reads the as-of date from this file
     try:
         found = periods()
@@ -433,14 +434,15 @@ def advance() -> None:
         errors = [score["error"] for score in scores.values() if "error" in score]
         if errors:
             sys.exit(f"Not advanced, the as-of date is still {old}. The champion could not be measured: {errors[0]}")
-    except BaseException:  # the line above, a timeout or Ctrl-C: no scores, so no advance
-        AS_OF.write_text(old + "\n")
+        print(f"as-of date {old} -> {new}: " + ", ".join(
+            f"{period} {found[period][0]} to {found[period][-1]}" for period in ("training", "practice", "val", "holdout")))
+        champion = [r for r in read_ledger() if r["verdict"] in CHAMPIONS][-1]
+        log("-", f"as-of date advanced from {old} to {new}: the champion (turn {champion['turn']}) measured again", ADVANCED,
+            practice=scores["practice"]["mae"], val_mae=scores["val"]["mae"])
+    except BaseException:  # the judge's error above, a timeout or Ctrl-C: put all three files back as they were
+        for path, content in before.items():
+            path.write_bytes(content)
         raise
-    print(f"as-of date {old} -> {new}: " + ", ".join(
-        f"{period} {found[period][0]} to {found[period][-1]}" for period in ("training", "practice", "val", "holdout")))
-    champion = [r for r in read_ledger() if r["verdict"] in CHAMPIONS][-1]
-    log("-", f"as-of date advanced from {old} to {new}: the champion (turn {champion['turn']}) measured again", ADVANCED,
-        practice=scores["practice"]["mae"], val_mae=scores["val"]["mae"])
 
 
 def holdout() -> None:
