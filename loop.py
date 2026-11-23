@@ -286,7 +286,13 @@ def ideas_judged() -> int:
 
 
 def last_turn() -> int:
-    """The number of the newest turn in the ledger. An advance is not a turn, so its row has no number."""
+    """Find the newest turn in the ledger.
+
+    Returns
+    -------
+    int
+        Its number. An advance is not a turn, so its row has no number and is skipped.
+    """
     return [int(r["turn"]) for r in read_ledger() if r["verdict"] != ADVANCED][-1]
 
 
@@ -411,21 +417,25 @@ def advance() -> None:
     Raises
     ------
     SystemExit
-        If the store has no month later than the as-of date. Also if the champion can't be
-        measured: the as-of date is then put back, so nothing is half done.
+        If the store has no month later than the as-of date, or the champion can't be
+        measured. However the measuring ends without its scores (the judge's error, a
+        timeout, Ctrl-C), the as-of date is put back first, so it never moves without its row.
     """
     old, new = as_of(), store.months()[-1]
     if new <= old:
         sys.exit(f"Nothing to advance to: the as-of date is {old}, and the data store's newest month is {new}.")
     if not LEDGER.exists():
         start()  # as `run` does: the baseline's row records the as-of date the research started under
-    AS_OF.write_text(new + "\n")
-    scores = {period: judge("score", period, LAB / "model.py") for period in ("practice", "val")}
-    errors = [score["error"] for score in scores.values() if "error" in score]
-    if errors:
+    AS_OF.write_text(new + "\n")  # first, because the judge reads the as-of date from this file
+    try:
+        found = periods()
+        scores = {period: judge("score", period, LAB / "model.py") for period in ("practice", "val")}
+        errors = [score["error"] for score in scores.values() if "error" in score]
+        if errors:
+            sys.exit(f"Not advanced, the as-of date is still {old}. The champion could not be measured: {errors[0]}")
+    except BaseException:  # the line above, a timeout or Ctrl-C: no scores, so no advance
         AS_OF.write_text(old + "\n")
-        sys.exit(f"Not advanced, the as-of date is still {old}. The champion could not be measured: {errors[0]}")
-    found = periods()
+        raise
     print(f"as-of date {old} -> {new}: " + ", ".join(
         f"{period} {found[period][0]} to {found[period][-1]}" for period in ("training", "practice", "val", "holdout")))
     champion = [r for r in read_ledger() if r["verdict"] in CHAMPIONS][-1]

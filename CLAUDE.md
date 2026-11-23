@@ -1,6 +1,6 @@
 # Toy autoresearch
 
-Context for Claude Code. This project started in a Claude chat (Nov 5-8, 2026); this file
+Context for Claude Code. This project started in a Claude chat (2026-11-05 to 2026-11-08); this file
 carries over what was decided and learned there. README.md describes the files and commands.
 
 ## Goal
@@ -22,7 +22,8 @@ The lessons are meant to carry over to real problems like these.
   thrown away.
 - `lab/program.md` is a template: it names no date. Each turn `brief()` in `loop.py` fills
   in the `{names}` (the agent's months, the practice period, the period lengths) and writes
-  the result into the workspace.
+  the result into the workspace. It uses Python's `str.format`, so a brace meant to reach
+  the agent as text must be doubled (`{{`), and a misspelt name stops the turn.
 - Two ledgers. `ledger.tsv` at the repo root is the full record, validation scores
   included, and the try count behind the bar comes from it. `lab/ledger.tsv` is the agent's
   copy, rewritten from it after every turn: practice numbers, verdict and lesson, and no
@@ -155,8 +156,8 @@ The lessons are meant to carry over to real problems like these.
   the scores it expects don't depend on what `as_of.txt` says.
 - `scripts/` holds helpers outside the main loop (`make_data.py`, `ingest.py`, `answer_key.py`, the simulations). Run them from the repo root.
 - `tests/` holds the five test scripts (`test_sandboxes.py`, `test_loop.py`, `test_store.py`, `test_size.py`, `test_as_of.py`). Each is a plain script, not pytest: run it from the repo root with `uv run`.
-- Docker Desktop must be running. `uv run loop.py build` builds the three images (`run` and
-  `holdout` do it first anyway); `uv run tests/test_sandboxes.py` checks the isolation
+- Docker Desktop must be running. `uv run loop.py build` builds the three images (`run`,
+  `advance` and `holdout` do it first anyway); `uv run tests/test_sandboxes.py` checks the isolation
   (about 30 s).
 - The agent sandbox can't use the Mac's Keychain login, so `loop.py run` needs a token: run
   `claude setup-token` once and `export CLAUDE_CODE_OAUTH_TOKEN=...` in the shell. The sandbox

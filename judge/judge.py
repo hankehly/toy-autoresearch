@@ -88,14 +88,14 @@ def periods() -> dict[str, list[str]]:
     return {name: found[name] for name in ("training", "practice", "val", "holdout")}  # oldest period first
 
 
-def open_model_sandbox(model_path, split) -> subprocess.Popen:
+def open_model_sandbox(model_path, period) -> subprocess.Popen:
     """Start a model sandbox, ready to be scored on one of the periods.
 
     Parameters
     ----------
     model_path : str or Path
         The model.py to run.
-    split : str
+    period : str
         The period to be scored: "practice", "val" or "holdout". The sandbox gets the month
         folders before that period's first month, and the runner loads them as the model's
         history when it starts. No later month is in the sandbox.
@@ -105,7 +105,7 @@ def open_model_sandbox(model_path, split) -> subprocess.Popen:
     subprocess.Popen
         The running sandbox. The judge talks to it through stdin and stdout.
     """
-    first_scored = periods()[split][0]
+    first_scored = periods()[period][0]
     return subprocess.Popen([
         "docker", "run", "--rm", "-i", "--pull", "never",
         "--network", "none",                                          # no internet
@@ -142,16 +142,16 @@ def as_rows(days) -> list[dict]:
     return days.assign(date=days.date.dt.strftime("%Y-%m-%d")).to_dict("records")
 
 
-def daily_misses(model_path, split) -> np.ndarray:
+def daily_misses(model_path, period) -> np.ndarray:
     """Walk forward one month at a time, like real life.
     fit() learns from every day before the month. predict() sees every day before today,
     plus every column of today except its load. Each day's load is revealed only after the
     model has guessed it.
     The sandbox starts with the months before the first scored one already in it, so the
     judge reads only the scored months, one at a time."""
-    sandbox = open_model_sandbox(model_path, split)
+    sandbox = open_model_sandbox(model_path, period)
     misses = []
-    for month in periods()[split]:
+    for month in periods()[period]:
         request(sandbox, {"op": "fit"})
         for day in as_rows(store.read([month])):
             today = {column: value for column, value in day.items() if column != "load"}
@@ -214,8 +214,8 @@ def practice(champion_path, candidate_path) -> dict:
 if __name__ == "__main__":
     store.need()
     if sys.argv[1] == "score":
-        split, path = sys.argv[2], sys.argv[3]
-        print(json.dumps({"split": split, "mae": round(float(daily_misses(path, split).mean()), 3)}))
+        period, path = sys.argv[2], sys.argv[3]
+        print(json.dumps({"period": period, "mae": round(float(daily_misses(path, period).mean()), 3)}))
     elif sys.argv[1] == "compare":
         print(json.dumps(compare(sys.argv[2], sys.argv[3], int(sys.argv[4]))))
     elif sys.argv[1] == "practice":
