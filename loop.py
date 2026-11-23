@@ -427,8 +427,8 @@ def advance() -> None:
     if not LEDGER.exists():
         start()  # as `run` does: the baseline's row records the as-of date the research started under
     before = {path: path.read_bytes() for path in (AS_OF, LEDGER, AGENT_LEDGER)}  # the three files an advance writes
-    AS_OF.write_text(new + "\n")  # first, because the judge reads the as-of date from this file
     try:
+        AS_OF.write_text(new + "\n")  # first, because the judge reads the as-of date from this file
         found = periods()
         scores = {period: judge("score", period, LAB / "model.py") for period in ("practice", "val")}
         errors = [score["error"] for score in scores.values() if "error" in score]
