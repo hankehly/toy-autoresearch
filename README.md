@@ -229,8 +229,8 @@ Every run is judged on a town of its own.
 thrown away under an older as-of date. The brief allows this, and a retry counts as a try.
 
 - Letting old tries fade kept about one lucky idea in ten runs, far under one per 300
-  ideas, and about as many as never forgetting a try: one more, in the 120 runs of the two
-  rules. It was an idea that won 99.94% of reshuffles, enough as number 74 (bar 99.93%)
+  ideas, and about as many as never forgetting a try: one more, over the 120 runs each
+  rule had. It was an idea that won 99.94% of reshuffles, enough as number 74 (bar 99.93%)
   and not as number 103 (bar 99.95%).
 - Resetting the count kept one lucky idea in about every two runs.
 - A retry can be a lucky keep, like any other try, and is about as likely to be one as a
