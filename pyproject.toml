@@ -15,3 +15,13 @@ dependencies = [
     # loop.py checks the agent's structured reply against its schema with this.
     "jsonschema>=4.26.0",
 ]
+
+[dependency-groups]
+dev = [
+    # Runs the tests: `uv run pytest`.
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]        # `uv run pytest` runs every test in tests/
+pythonpath = [".", "judge"]  # so a test file can `import loop`, `import store` and `import judge`

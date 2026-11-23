@@ -152,13 +152,19 @@ The lessons are meant to carry over to real problems like these.
 - A fresh checkout has no data: run `uv run scripts/make_data.py` once. It makes the same
   days every time, and `loop.py` and `judge.py` stop with one line asking for it if the
   store is missing. Setting `TOY_DATA` to a folder points `store.py`, and so everything, at
-  a different data folder; the tests use it to work on a temporary store. `TOY_AS_OF` does
-  the same for the as-of file: every test holds its own as-of date in a temporary file, so
-  the scores it expects don't depend on what `as_of.txt` says.
+  a different data folder; the tests use it, so each test file works on a temporary store
+  of its own and never touches `data/`. `TOY_AS_OF` does the same for the as-of file: each
+  test file holds its own as-of date in a temporary file, so the scores it expects don't
+  depend on what `as_of.txt` says.
 - `scripts/` holds helpers outside the main loop (`make_data.py`, `ingest.py`, `answer_key.py`, the simulations). Run them from the repo root.
-- `tests/` holds the five test scripts (`test_sandboxes.py`, `test_loop.py`, `test_store.py`, `test_size.py`, `test_as_of.py`). Each is a plain script, not pytest: run it from the repo root with `uv run`.
+- `tests/` holds the tests, which run with pytest. One command from the repo root runs them all:
+  `uv run pytest` (about 3 minutes; Docker running, no token, no `make_data.py` first). One file:
+  `uv run pytest tests/test_store.py`. Tests by name: `uv run pytest -k proxy`. `tests/conftest.py`
+  holds what the five test files share.
+- GitHub runs `uv run pytest` on every pull request and every push to `main`
+  (`.github/workflows/ci.yml`). It needs no secret.
 - Docker Desktop must be running. `uv run loop.py build` builds the three images (`run`,
-  `advance` and `holdout` do it first anyway); `uv run tests/test_sandboxes.py` checks the isolation
+  `advance` and `holdout` do it first anyway); `uv run pytest tests/test_sandboxes.py` checks the isolation
   (about 30 s).
 - The agent sandbox can't use the Mac's Keychain login, so `loop.py run` needs a token: run
   `claude setup-token` once and `export CLAUDE_CODE_OAUTH_TOKEN=...` in the shell. The sandbox
@@ -185,7 +191,8 @@ The lessons are meant to carry over to real problems like these.
 - If you change `store.py`, `scripts/make_data.py` or `scripts/ingest.py`, run
   `tests/test_store.py` (about 30 s). It holds the SHA-256 of the old `judge/full_data.csv`,
   so the days 2023-01-01 to 2025-12-31 can't change unnoticed. `tests/test_size.py` scores a
-  20-year, 303-column store and prints the time (about 12 s for the validation period, one year).
+  20-year, 303-column store; run it with `-s` to see the time printed (about 12 s for the
+  validation period, one year).
 - A model gets its `history` without a copy being made (pandas copy-on-write, switched on
   in `runner.py`, `lab/practice.py` and `lab/check.py`). Writing to `history` is safe: the
   next call still sees the original table. Known cost that stays: the runner rebuilds its

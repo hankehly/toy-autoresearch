@@ -1,13 +1,17 @@
 """Proves that the periods follow the as-of date, and that an advance moves them. Run it from the repo root:
 
-    uv run tests/test_as_of.py
+    uv run pytest tests/test_as_of.py
 
-Everything here happens in a temporary folder: a data store (TOY_DATA points the store
-there), an as-of file (TOY_AS_OF points the judge and the loop there) and a copy of lab/. So
-data/, as_of.txt, lab/, history/ and the ledgers are never touched. The judge and the model
-sandbox are the real ones. Only the agent is replaced: a stand-in that changes model.py and
-returns a reply, as Claude Code would, so no login token is needed.
-Prints PASS or FAIL for each check, and exits with 1 if any check failed (about 1 minute).
+Everything here happens in temporary folders: the test file's own data folder and as-of file
+(see data_folder and as_of_file in conftest.py) and a copy of lab/. So data/, as_of.txt,
+lab/, history/ and the ledgers are never touched. The judge and the model sandbox are the
+real ones. Only the agent is replaced: a stand-in that changes model.py and returns a reply,
+as Claude Code would, so no login token is needed. About 1 minute.
+
+The sections follow one store and one as-of date through time, step by step, as a person
+would: make_data.py, a turn, six months arrive, an advance, a turn, one more month arrives,
+another advance, a turn, the holdout, a reset. Each step is a fixture that asks for the step
+before it and records what it saw, so a test reads its step's record and can run alone.
 """
 import contextlib
 import io
@@ -17,39 +21,16 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
+
+import judge
+import loop
+import store
+
 ROOT = Path(__file__).resolve().parent.parent
-TMP = Path(tempfile.mkdtemp(prefix="test-as-of-"))
-os.environ["TOY_DATA"] = str(TMP / "data")         # set before store and loop are imported; the scripts and the judge started below follow them too
-os.environ["TOY_AS_OF"] = str(TMP / "as_of.txt")
-sys.path[:0] = [str(ROOT), str(ROOT / "judge")]
-import judge  # noqa: E402  (imported after the path is set: these files live in the repo, not here)
-import loop  # noqa: E402
-import store  # noqa: E402
-
-AS_OF = TMP / "as_of.txt"
-AS_OF.write_text("2025-12\n")  # what as_of.txt holds on a fresh checkout
-loop.build()  # the judge runs every model in the model sandbox
-failures = 0
-
-
-def check(name, passed, detail="") -> None:
-    """Print PASS or FAIL for one check, and count the failures.
-
-    Parameters
-    ----------
-    name : str
-        What the check proves.
-    passed : bool
-        Whether it held.
-    detail : object, optional
-        What was seen, printed after the name.
-    """
-    global failures
-    failures += not passed
-    print(f"{'PASS' if passed else 'FAIL'}  {name}" + (f"  ({detail})" if detail else ""), flush=True)
 
 
 def run(*command) -> subprocess.CompletedProcess:
@@ -68,26 +49,6 @@ def run(*command) -> subprocess.CompletedProcess:
     """
     no_token = {name: value for name, value in os.environ.items() if name != "CLAUDE_CODE_OAUTH_TOKEN"}
     return subprocess.run([sys.executable, *command], cwd=ROOT, env=no_token, capture_output=True, text=True)
-
-
-def write_model(name, code) -> Path:
-    """Save a test model in the temporary folder.
-
-    Parameters
-    ----------
-    name : str
-        The file's name, without ".py".
-    code : str
-        The model's code.
-
-    Returns
-    -------
-    Path
-        Where it was saved: <TMP>/<name>.py.
-    """
-    path = TMP / f"{name}.py"
-    path.write_text(code)
-    return path
 
 
 def periods() -> dict:
@@ -185,7 +146,50 @@ def predict(state, history, today) -> float:
     return float(X[0] @ state)
 '''
 
-baseline, regression = write_model("baseline", BASELINE), write_model("regression", REGRESSION)
+CRASHES = '''
+def fit(history) -> None:
+    raise ValueError("this model can't be measured")
+
+
+def predict(state, history, today) -> float:
+    return 100.0
+'''
+
+# This model says which is its newest month, as its guess: month=2024-06 comes back as 202406.
+NAMES_ITS_NEWEST_MONTH = '''
+import os
+
+
+def fit(history) -> None:
+    return None
+
+
+def predict(state, history, today) -> float:
+    return float(max(os.listdir("/data")).removeprefix("month=").replace("-", ""))
+'''
+
+
+@pytest.fixture(scope="module")
+def models(tmp_path_factory) -> dict[str, Path]:
+    """Save the test models that the judge scores from a file.
+
+    Parameters
+    ----------
+    tmp_path_factory : pytest.TempPathFactory
+        pytest's own fixture, which makes temporary folders.
+
+    Returns
+    -------
+    dict[str, Path]
+        Where each model was saved, by name: "baseline", "regression" and "newest".
+    """
+    folder = tmp_path_factory.mktemp("models")
+    paths = {}
+    for name, code in [("baseline", BASELINE), ("regression", REGRESSION), ("newest", NAMES_ITS_NEWEST_MONTH)]:
+        paths[name] = folder / f"{name}.py"
+        paths[name].write_text(code)
+    return paths
+
 
 # The scores a model should get under each as-of date. Those for 2025-12 are the example run's
 # (ledger.tsv and the README's table). The later ones were worked out once, by a separate
@@ -213,65 +217,155 @@ PERIODS = {
 
 MONTH = "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
 WRITTEN_DATE = re.compile(rf"\b(?:19|20)\d\d\b|\b{MONTH}\W{{0,3}}{MONTH}\b")
-searched = [ROOT / "loop.py"]
-for folder in ("judge", "lab", "docker"):
-    # the code, the brief and the sandboxes' files. Nothing else: a stray file that isn't text would stop the search
-    searched += [path for path in sorted((ROOT / folder).rglob("*"))
-                 if path.suffix in (".py", ".md", ".conf") or path.name == "Dockerfile"]
-dates_found = []
-for path in searched:
-    for number, line in enumerate(path.read_text().splitlines(), 1):
-        if WRITTEN_DATE.search(line):
-            dates_found.append(f"{path.relative_to(ROOT)}:{number}: {line.strip()[:60]}")
-check(f"no written-out date in loop.py, judge/, lab/ or docker/ ({len(searched)} files searched)", not dates_found, dates_found[:5])
-check("the search itself finds a year, a month beside a year, and two months side by side",
-      all(WRITTEN_DATE.search(text) for text in ("through 2024-06", "Jul 2023", "Jan-Jun", "July - December")))
+
+
+def test_no_written_out_date_in_loop_py_judge_lab_or_docker():
+    searched = [ROOT / "loop.py"]
+    for folder in ("judge", "lab", "docker"):
+        # the code, the brief and the sandboxes' files. Nothing else: a stray file that isn't text would stop the search
+        searched += [path for path in sorted((ROOT / folder).rglob("*"))
+                     if path.suffix in (".py", ".md", ".conf") or path.name == "Dockerfile"]
+    dates_found = []
+    for path in searched:
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            if WRITTEN_DATE.search(line):
+                dates_found.append(f"{path.relative_to(ROOT)}:{number}: {line.strip()[:60]}")
+    assert dates_found == []
+
+
+def test_the_search_itself_finds_a_year_a_month_beside_a_year_and_two_months_side_by_side():
+    assert all(WRITTEN_DATE.search(text) for text in ("through 2024-06", "Jul 2023", "Jan-Jun", "July - December"))
 
 
 # --- As-of date 2025-12: the periods are the ones the code used to list, so no score changes ---
 
-made = run("scripts/make_data.py")
-check("make_data.py fills a temporary store", made.returncode == 0, made.stderr[-300:])
+@pytest.fixture(scope="module")
+def made() -> subprocess.CompletedProcess:
+    """Run make_data.py, as a person does once after a fresh checkout.
 
-check("as-of date 2025-12: the periods are the first column of the issue's table", periods() == PERIODS["2025-12"], periods())
-for name, path in [("baseline", baseline), ("regression", regression)]:
-    scores = (score("practice", path), score("val", path), score("holdout", path))
-    check(f"as-of date 2025-12: the {name} scores as it always has on practice, validation and holdout",
-          scores == EXPECTED["2025-12"][name], scores)
+    Returns
+    -------
+    subprocess.CompletedProcess
+        The finished run. The store then holds 2023-01 to 2025-12.
+    """
+    return run("scripts/make_data.py")
+
+
+@pytest.fixture(scope="module")
+def at_2025_12(made, models) -> dict:
+    """Ask the judge for the periods and the two models' scores, under the as-of date 2025-12.
+
+    Parameters
+    ----------
+    made : subprocess.CompletedProcess
+        The step before: the store holds 2023-01 to 2025-12.
+    models : dict[str, Path]
+        The saved test models.
+
+    Returns
+    -------
+    dict
+        "periods", what `judge.py periods` printed, and "scores": for "baseline" and
+        "regression", the practice, validation and holdout scores.
+    """
+    return {"periods": periods(),
+            "scores": {name: tuple(score(period, models[name]) for period in ("practice", "val", "holdout"))
+                       for name in ("baseline", "regression")}}
+
+
+def test_make_data_py_fills_a_temporary_store(made):
+    assert made.returncode == 0, made.stderr[-300:]
+
+
+def test_as_of_2025_12_the_periods_are_the_first_column_of_the_issues_table(at_2025_12):
+    assert at_2025_12["periods"] == PERIODS["2025-12"]
+
+
+@pytest.mark.parametrize("name", ["baseline", "regression"])
+def test_as_of_2025_12_the_model_scores_as_it_always_has_on_practice_validation_and_holdout(name, at_2025_12):
+    assert at_2025_12["scores"][name] == EXPECTED["2025-12"][name]
 
 
 # --- The judge stops when the store can't fill the periods -------------------------------
 
-AS_OF.write_text("2026-06\n")
-stopped = periods().get("stopped", "")
-check("the judge stops with one line if the store does not reach the as-of date",
-      len(stopped.splitlines()) == 1 and "2026-06" in stopped and "2025-12" in stopped, stopped or periods())
-stopped = run("judge/judge.py", "score", "val", str(baseline))
-check("and it scores nothing then", stopped.returncode != 0 and stopped.stdout == "", stopped.stdout)
+@pytest.fixture(scope="module")
+def judge_stopped(at_2025_12, models, as_of_file) -> dict:
+    """Write two as-of dates the store can't serve, ask the judge each time, and put 2025-12 back.
 
-AS_OF.write_text("2025-06\n")  # counting back from here, the practice period starts at the store's first month
-stopped = periods().get("stopped", "")
-check("the judge stops with one line if the store has no month before the practice period",
-      len(stopped.splitlines()) == 1 and "before the practice period, 2023-01 to 2023-12" in stopped, stopped or periods())
-AS_OF.write_text("2025-12\n")
+    Parameters
+    ----------
+    at_2025_12 : dict
+        The step before: the store ends at 2025-12.
+    models : dict[str, Path]
+        The saved test models.
+    as_of_file : Path
+        The test file's as-of file.
+
+    Returns
+    -------
+    dict
+        "store_too_short", the line the judge stopped with under 2026-06, and "score_run",
+        its attempt to score then. "nothing_to_learn_from", the line it stopped with under
+        2025-06: counting back from there, the practice period starts at the store's first month.
+    """
+    as_of_file.write_text("2026-06\n")
+    seen = {"store_too_short": periods().get("stopped", ""),
+            "score_run": run("judge/judge.py", "score", "val", str(models["baseline"]))}
+    as_of_file.write_text("2025-06\n")
+    seen["nothing_to_learn_from"] = periods().get("stopped", "")
+    as_of_file.write_text("2025-12\n")
+    return seen
+
+
+def test_the_judge_stops_with_one_line_if_the_store_does_not_reach_the_as_of_date(judge_stopped):
+    stopped = judge_stopped["store_too_short"]
+    assert len(stopped.splitlines()) == 1
+    assert "2026-06" in stopped and "2025-12" in stopped
+
+
+def test_and_it_scores_nothing_then(judge_stopped):
+    assert judge_stopped["score_run"].returncode != 0
+    assert judge_stopped["score_run"].stdout == ""
+
+
+def test_the_judge_stops_with_one_line_if_the_store_has_no_month_before_the_practice_period(judge_stopped):
+    stopped = judge_stopped["nothing_to_learn_from"]
+    assert len(stopped.splitlines()) == 1
+    assert "before the practice period, 2023-01 to 2023-12" in stopped
 
 
 # --- A temporary lab for the loop to work on, and a stand-in for the agent -----------------
-# The loop's folders are pointed at copies, so the real lab/, history/ and ledgers stay as they are.
 
-loop.LAB, loop.HISTORY = TMP / "lab", TMP / "history"
-loop.LEDGER, loop.AGENT_LEDGER = TMP / "ledger.tsv", TMP / "lab" / "ledger.tsv"
-loop.LAB.mkdir()
-for name in ("program.md", "check.py", "practice.py"):
-    shutil.copy(ROOT / "lab" / name, loop.LAB / name)
-(loop.LAB / "model.py").write_text(BASELINE)
-
-seen = {}  # what the stand-in agent found in its workspace on the latest turn
 PRACTICE = ("practice_champion", "practice", "practice_wins")
 VALIDATION = ("val_mae", "win_pct", "bar_pct")
 
 
-def play(model_code) -> dict[str, str]:
+@pytest.fixture(scope="module")
+def lab(tmp_path_factory) -> Iterator[None]:
+    """Point the loop at a temporary lab, history and ledgers, with the baseline as model.py.
+
+    The loop's folders are pointed at copies, so the real lab/, history/ and ledgers stay
+    as they are. They point back when the test file is done.
+
+    Parameters
+    ----------
+    tmp_path_factory : pytest.TempPathFactory
+        pytest's own fixture, which makes temporary folders.
+    """
+    folder = tmp_path_factory.mktemp("loop")
+    with pytest.MonkeyPatch.context() as patch:  # undoes its changes when the test file is done
+        patch.setattr(loop, "LAB", folder / "lab")
+        patch.setattr(loop, "HISTORY", folder / "history")
+        patch.setattr(loop, "LEDGER", folder / "ledger.tsv")
+        patch.setattr(loop, "AGENT_LEDGER", folder / "lab" / "ledger.tsv")
+        loop.LAB.mkdir()
+        for name in ("program.md", "check.py", "practice.py"):
+            shutil.copy(ROOT / "lab" / name, loop.LAB / name)
+        (loop.LAB / "model.py").write_text(BASELINE)
+        yield
+
+
+def play(model_code) -> tuple[dict[str, str], str]:
     """Run the next turn. The stand-in agent writes model_code over model.py and asks for it
     to be judged.
 
@@ -282,18 +376,22 @@ def play(model_code) -> dict[str, str]:
 
     Returns
     -------
-    dict[str, str]
-        The turn's row in the full ledger.
+    tuple[dict[str, str], str]
+        The turn's row in the full ledger, and the brief (program.md) the stand-in agent
+        found in its workspace.
     """
+    found = {}
+
     def stand_in(work) -> dict:
-        seen["brief"] = (work / "program.md").read_text()
+        found["brief"] = (work / "program.md").read_text()
         (work / "model.py").write_text(model_code)
         return {"structured_output": {"idea": "an idea worth trying", "lesson": "What this turn taught me.",
                                       "practice": None, "submit": True}}
 
-    loop.run_agent = stand_in
-    loop.turn(loop.last_turn() + 1)
-    return loop.read_ledger()[-1]
+    with pytest.MonkeyPatch.context() as patch:  # the real run_agent is back when the turn is done
+        patch.setattr(loop, "run_agent", stand_in)
+        loop.turn(loop.last_turn() + 1)
+    return loop.read_ledger()[-1], found["brief"]
 
 
 def cells(row, *names) -> list[str]:
@@ -319,8 +417,8 @@ def stops(action) -> str:
 
     Parameters
     ----------
-    action : callable
-        What to run. Whatever it prints is thrown away.
+    action : Callable
+        What to run.
 
     Returns
     -------
@@ -328,8 +426,7 @@ def stops(action) -> str:
         The line it stopped with, or "" if it ran to the end.
     """
     try:
-        with contextlib.redirect_stdout(io.StringIO()):
-            action()
+        action()
     except SystemExit as stop:
         return str(stop.code)
     return ""
@@ -346,12 +443,14 @@ def agent_ledger() -> list[str]:
     return loop.AGENT_LEDGER.read_text().splitlines()
 
 
-def in_agent_sandbox(*command) -> str:
+def in_agent_sandbox(work, *command) -> str:
     """Run a command in an agent sandbox with the agent's months at /data and no network.
     Its workspace holds practice.py, the regression as champion.py and WITH_YESTERDAY as model.py.
 
     Parameters
     ----------
+    work : Path
+        An empty folder, which becomes the sandbox's workspace.
     *command : str
         The command to run in the workspace.
 
@@ -360,7 +459,9 @@ def in_agent_sandbox(*command) -> str:
     str
         What the command printed, or the end of its error.
     """
-    work = Path(tempfile.mkdtemp(prefix="agent-", dir=TMP))
+    # pytest makes its folders readable by you alone. On Linux the sandbox's user is not you
+    # (Docker on a Mac lets it in anyway), so let others read this one.
+    work.chmod(0o755)
     shutil.copy(ROOT / "lab" / "practice.py", work / "practice.py")
     (work / "champion.py").write_text(REGRESSION)
     (work / "model.py").write_text(WITH_YESTERDAY)
@@ -369,199 +470,514 @@ def in_agent_sandbox(*command) -> str:
     return ran.stdout or ran.stderr[-300:]
 
 
-def practice_printed() -> dict[str, float]:
-    """Run practice.py in the agent sandbox, for the regression against WITH_YESTERDAY.
+# --- Before any advance: every row records the as-of date 2025-12 --------------------------
+
+@pytest.fixture(scope="module")
+def turn_1(judge_stopped, lab) -> dict:
+    """Start the ledgers (loop.start()) and play turn 1: the regression, under 2025-12.
+
+    Parameters
+    ----------
+    judge_stopped : dict
+        The step before: the as-of date is 2025-12 again.
+    lab : None
+        The temporary lab.
 
     Returns
     -------
-    dict[str, float]
-        The three numbers it prints, by name: champion_mae, model_mae and wins_pct.
+    dict
+        "row", turn 1's row in the full ledger; "rows", the full ledger; "agent_ledger", the
+        lines of the agent's copy; "brief", the program.md in the agent's workspace; and
+        "template", lab/program.md itself.
     """
-    lines = [line.split() for line in in_agent_sandbox("python", "practice.py", "champion.py", "model.py").splitlines() if ":" in line]
-    return {words[0].rstrip(":"): float(words[1]) for words in lines}
+    loop.start()
+    row, brief = play(REGRESSION)
+    return {"row": row, "rows": loop.read_ledger(), "agent_ledger": agent_ledger(), "brief": brief,
+            "template": (loop.LAB / "program.md").read_text()}
 
 
-# --- Before any advance: every row records the as-of date 2025-12 --------------------------
+def test_turn_1_under_2025_12_the_regression_is_kept_with_the_scores_it_always_had(turn_1):
+    assert cells(turn_1["row"], "turn", "verdict", "practice", "val_mae") == ["1", "KEPT", "3.036", "2.915"]
 
-loop.start()
-row = play(REGRESSION)
-check("turn 1 under 2025-12: the regression is KEPT, with the scores it always had",
-      cells(row, "turn", "verdict", "practice", "val_mae") == ["1", "KEPT", "3.036", "2.915"], row)
-check("both rows so far record the as-of date they were measured under, 2025-12",
-      [r["as_of"] for r in loop.read_ledger()] == ["2025-12", "2025-12"], [r["as_of"] for r in loop.read_ledger()])
-check("the agent's copy has the as_of column too",
-      agent_ledger()[3].split("\t")[:2] == ["turn", "as_of"] and agent_ledger()[5].split("\t")[:2] == ["1", "2025-12"], agent_ledger()[3:])
-check("the brief in the workspace has its dates filled in: data 2023-01 to 2024-06, practice 2023-07 to 2024-06",
-      "`/data` holds 2023-01 to 2024-06" in seen["brief"] and "practice period, 2023-07 to 2024-06" in seen["brief"]
-      and "/data/month=2023-01/part.parquet" in seen["brief"] and "over the 12 months" in seen["brief"]
-      and "{" not in seen["brief"], [line for line in seen["brief"].splitlines() if "{" in line])
-check("lab/program.md itself is a template and names no date", "{data_first} to {data_last}" in (loop.LAB / "program.md").read_text())
+
+def test_both_rows_so_far_record_the_as_of_date_they_were_measured_under(turn_1):
+    assert [row["as_of"] for row in turn_1["rows"]] == ["2025-12", "2025-12"]
+
+
+def test_the_agents_copy_has_the_as_of_column_too(turn_1):
+    assert turn_1["agent_ledger"][3].split("\t")[:2] == ["turn", "as_of"]
+    assert turn_1["agent_ledger"][5].split("\t")[:2] == ["1", "2025-12"]
+
+
+def test_the_brief_in_the_workspace_has_its_dates_filled_in(turn_1):
+    # data 2023-01 to 2024-06, practice 2023-07 to 2024-06
+    brief = turn_1["brief"]
+    assert "`/data` holds 2023-01 to 2024-06" in brief
+    assert "practice period, 2023-07 to 2024-06" in brief
+    assert "/data/month=2023-01/part.parquet" in brief
+    assert "over the 12 months" in brief
+    assert [line for line in brief.splitlines() if "{" in line] == []  # no {name} is left unfilled
+
+
+def test_lab_program_md_itself_is_a_template_and_names_no_date(turn_1):
+    assert "{data_first} to {data_last}" in turn_1["template"]
 
 
 # --- Months that arrive move nothing ------------------------------------------------------
 
-ingested = run("scripts/ingest.py", "--through", "2026-06")
-check("ingest --through 2026-06 adds six months to the store", ingested.returncode == 0 and store.months()[-1] == "2026-06", ingested.stderr[-300:])
-check("the periods stay where they were: the as-of date is still 2025-12", periods() == PERIODS["2025-12"], periods())
-check("the agent's months still end at 2024-06", loop.agent_months()[-1] == "2024-06", loop.agent_months()[-1])
+@pytest.fixture(scope="module")
+def six_months_arrived(turn_1) -> dict:
+    """Run `ingest.py --through 2026-06`, and ask where the periods and the agent's months are.
+
+    Parameters
+    ----------
+    turn_1 : dict
+        The step before: one kept idea, under the as-of date 2025-12.
+
+    Returns
+    -------
+    dict
+        "run", the finished ingest; "newest", the store's newest month; "periods", what
+        `judge.py periods` printed; and "agent_newest", the newest month the agent has.
+    """
+    ingest = run("scripts/ingest.py", "--through", "2026-06")
+    return {"run": ingest, "newest": store.months()[-1], "periods": periods(), "agent_newest": loop.agent_months()[-1]}
 
 
-# --- loop.advance(): the as-of date moves to the store's newest month ---------------------
-
-CRASHES = '''
-def fit(history) -> None:
-    raise ValueError("this model can't be measured")
+def test_ingest_through_2026_06_adds_six_months_to_the_store(six_months_arrived):
+    assert six_months_arrived["run"].returncode == 0, six_months_arrived["run"].stderr[-300:]
+    assert six_months_arrived["newest"] == "2026-06"
 
 
-def predict(state, history, today) -> float:
-    return 100.0
-'''
-rows_before = loop.read_ledger()
-(loop.LAB / "model.py").write_text(CRASHES)
-stopped = stops(loop.advance)
-check("an advance that can't measure the champion stops, and leaves the as-of date and the ledger as they were",
-      "could not be measured" in stopped and AS_OF.read_text() == "2025-12\n" and loop.read_ledger() == rows_before, stopped or AS_OF.read_text())
-(loop.LAB / "model.py").write_text(REGRESSION)
+def test_the_periods_stay_where_they_were_the_as_of_date_is_still_2025_12(six_months_arrived):
+    assert six_months_arrived["periods"] == PERIODS["2025-12"]
 
+
+def test_the_agents_months_still_end_at_2024_06(six_months_arrived):
+    assert six_months_arrived["agent_newest"] == "2024-06"
+
+
+# --- loop.advance(): an advance happens whole or not at all ------------------------------
 
 def interrupted() -> None:
     """Stands in for loop.write_agent_ledger() when Ctrl-C arrives just after the full ledger got its row."""
     raise KeyboardInterrupt
 
 
-files_before = [path.read_bytes() for path in (AS_OF, loop.LEDGER, loop.AGENT_LEDGER)]
-write_agent_ledger, loop.write_agent_ledger = loop.write_agent_ledger, interrupted
-try:
-    stops(loop.advance)
-except KeyboardInterrupt:
-    pass
-loop.write_agent_ledger = write_agent_ledger
-check("an advance interrupted while it writes the ledgers leaves the as-of date and both ledgers as they were",
-      [path.read_bytes() for path in (AS_OF, loop.LEDGER, loop.AGENT_LEDGER)] == files_before,
-      f"as-of date {AS_OF.read_text().strip()}, {len(loop.read_ledger())} rows in the full ledger")
+def files_an_advance_writes(as_of_file) -> list[bytes]:
+    """Read the three files an advance writes: the as-of file and the two ledgers.
 
-stopped = stops(loop.advance)
-check("advance: as_of.txt reads 2026-06",stopped == "" and AS_OF.read_text() == "2026-06\n", stopped or AS_OF.read_text())
-check("advance: the periods are the second column of the issue's table", periods() == PERIODS["2026-06"], periods())
-row = loop.read_ledger()[-1]
-check("advance: one `advanced` row, with no turn number, under the new as-of date",
-      cells(row, "turn", "as_of", "verdict") == ["-", "2026-06", "advanced"] and len(loop.read_ledger()) == 3, row)
-check("advance: the row holds the champion's scores on the new practice and validation periods, 2.970 and 2.768",
-      (float(row["practice"]), float(row["val_mae"])) == EXPECTED["2026-06"]["regression"][:2], cells(row, "practice", "val_mae"))
-check("advance: old rows are not measured again", loop.read_ledger()[:2] == rows_before)
-check("advance: the champion's model is unchanged", (loop.LAB / "model.py").read_text() == REGRESSION)
-check("agent's copy: the top line gives the champion's new practice score, and an advance is not a try",
-      agent_ledger()[:2] == ["# Champion: turn 1, practice 2.97 MWh",
-                             "# Ideas judged: 1. The next must win 97.5% of the judge's reshuffles."], agent_ledger()[:2])
-check("agent's copy: the advanced row shows the new practice score and no validation number",
-      agent_ledger()[-1].split("\t")[3:7] == ["-", "2.97", "-", "advanced"] and "2.768" not in loop.AGENT_LEDGER.read_text(), agent_ledger()[-1])
+    Parameters
+    ----------
+    as_of_file : Path
+        The test file's as-of file.
+
+    Returns
+    -------
+    list[bytes]
+        The contents of the as-of file, the full ledger and the agent's copy, in that order.
+    """
+    return [path.read_bytes() for path in (as_of_file, loop.LEDGER, loop.AGENT_LEDGER)]
+
+
+@pytest.fixture(scope="module")
+def advances_cut_short(six_months_arrived, as_of_file) -> dict:
+    """Try two advances that can't finish: one whose champion crashes, one interrupted while
+    it writes the ledgers. The champion is the regression again afterwards.
+
+    Parameters
+    ----------
+    six_months_arrived : dict
+        The step before: the store reaches 2026-06, and the as-of date is still 2025-12.
+    as_of_file : Path
+        The test file's as-of file.
+
+    Returns
+    -------
+    dict
+        "before", the three files an advance writes, as they were. "crashed", the line the
+        first advance stopped with, and "after_crashed", the three files after it.
+        "after_interrupted", the three files after the second.
+    """
+    seen = {"before": files_an_advance_writes(as_of_file)}
+
+    (loop.LAB / "model.py").write_text(CRASHES)
+    seen["crashed"] = stops(loop.advance)
+    seen["after_crashed"] = files_an_advance_writes(as_of_file)
+    (loop.LAB / "model.py").write_text(REGRESSION)
+
+    with pytest.MonkeyPatch.context() as patch, pytest.raises(KeyboardInterrupt):
+        patch.setattr(loop, "write_agent_ledger", interrupted)
+        loop.advance()
+    seen["after_interrupted"] = files_an_advance_writes(as_of_file)
+    return seen
+
+
+def test_an_advance_that_cant_measure_the_champion_stops_and_leaves_the_as_of_date_and_the_ledger_as_they_were(advances_cut_short):
+    assert "could not be measured" in advances_cut_short["crashed"]
+    assert advances_cut_short["before"][0] == b"2025-12\n"
+    assert advances_cut_short["after_crashed"] == advances_cut_short["before"]
+
+
+def test_an_advance_interrupted_while_it_writes_the_ledgers_leaves_the_as_of_date_and_both_ledgers_as_they_were(advances_cut_short):
+    assert advances_cut_short["after_interrupted"] == advances_cut_short["before"]
+
+
+# --- loop.advance(): the as-of date moves to the store's newest month ---------------------
+
+@pytest.fixture(scope="module")
+def advanced_to_2026_06(advances_cut_short, as_of_file) -> dict:
+    """Advance: loop.advance(), with the store reaching 2026-06.
+
+    Parameters
+    ----------
+    advances_cut_short : dict
+        The step before: the as-of date is still 2025-12, and the champion is the regression.
+    as_of_file : Path
+        The test file's as-of file.
+
+    Returns
+    -------
+    dict
+        "stopped", the line the advance stopped with ("" if it ran to the end); "as_of", the
+        text of the as-of file; "periods", what `judge.py periods` printed; "rows", the full
+        ledger; "agent_ledger", the lines of the agent's copy; and "champion", lab/model.py.
+    """
+    stopped = stops(loop.advance)
+    return {"stopped": stopped, "as_of": as_of_file.read_text(), "periods": periods(), "rows": loop.read_ledger(),
+            "agent_ledger": agent_ledger(), "champion": (loop.LAB / "model.py").read_text()}
+
+
+def test_advance_as_of_txt_reads_2026_06(advanced_to_2026_06):
+    assert advanced_to_2026_06["stopped"] == ""
+    assert advanced_to_2026_06["as_of"] == "2026-06\n"
+
+
+def test_advance_the_periods_are_the_second_column_of_the_issues_table(advanced_to_2026_06):
+    assert advanced_to_2026_06["periods"] == PERIODS["2026-06"]
+
+
+def test_advance_one_advanced_row_with_no_turn_number_under_the_new_as_of_date(advanced_to_2026_06):
+    rows = advanced_to_2026_06["rows"]
+    assert cells(rows[-1], "turn", "as_of", "verdict") == ["-", "2026-06", "advanced"]
+    assert len(rows) == 3
+
+
+def test_advance_the_row_holds_the_champions_scores_on_the_new_practice_and_validation_periods(advanced_to_2026_06):
+    # 2.970 and 2.768
+    row = advanced_to_2026_06["rows"][-1]
+    assert (float(row["practice"]), float(row["val_mae"])) == EXPECTED["2026-06"]["regression"][:2]
+
+
+def test_advance_old_rows_are_not_measured_again(advanced_to_2026_06, turn_1):
+    assert advanced_to_2026_06["rows"][:2] == turn_1["rows"]
+
+
+def test_advance_the_champions_model_is_unchanged(advanced_to_2026_06):
+    assert advanced_to_2026_06["champion"] == REGRESSION
+
+
+def test_agents_copy_the_top_line_gives_the_champions_new_practice_score_and_an_advance_is_not_a_try(advanced_to_2026_06):
+    assert advanced_to_2026_06["agent_ledger"][:2] == ["# Champion: turn 1, practice 2.97 MWh",
+                                                       "# Ideas judged: 1. The next must win 97.5% of the judge's reshuffles."]
+
+
+def test_agents_copy_the_advanced_row_shows_the_new_practice_score_and_no_validation_number(advanced_to_2026_06):
+    assert advanced_to_2026_06["agent_ledger"][-1].split("\t")[3:7] == ["-", "2.97", "-", "advanced"]
+    assert "2.768" not in "\n".join(advanced_to_2026_06["agent_ledger"])
 
 
 # --- After the advance: the agent and the judge work on the new periods --------------------
 
-months = sorted(in_agent_sandbox("ls", "/data").split())
-check("the agent sandbox holds data through 2024-12: 24 months from 2023-01",
-      (len(months), months[:1], months[-1:]) == (24, ["month=2023-01"], ["month=2024-12"]), (len(months), months[:1], months[-1:]))
-check("practice.py scores the newest 12 months of that data, 2024-01 to 2024-12: 2.970 against 2.922, won 86.18%",
-      practice_printed() == {"champion_mae": 2.97, "model_mae": 2.922, "wins_pct": 86.18}, practice_printed())
+@pytest.fixture(scope="module")
+def turn_2(advanced_to_2026_06, as_of_file, tmp_path_factory) -> dict:
+    """Under the as-of date 2026-06: look into the agent sandbox, play turn 2 (WITH_YESTERDAY),
+    and try a second advance.
 
-row = play(WITH_YESTERDAY)
-check("a turn after the advance: its row is turn 2, under the as-of date 2026-06",
-      cells(row, "turn", "as_of") == ["2", "2026-06"], cells(row, "turn", "as_of"))
-check("that turn: the loop measured the same practice numbers as practice.py, too few wins to be judged",
-      cells(row, *PRACTICE, "verdict", *VALIDATION) == ["2.97", "2.922", "86.18", "dropped on practice", "-", "-", "-"], row)
-check("that turn: the brief named the new dates, data 2023-01 to 2024-12 and practice 2024-01 to 2024-12",
-      "`/data` holds 2023-01 to 2024-12" in seen["brief"] and "practice period, 2024-01 to 2024-12" in seen["brief"],
-      [line for line in seen["brief"].splitlines() if "2024" in line])
+    Parameters
+    ----------
+    advanced_to_2026_06 : dict
+        The step before: the as-of date is 2026-06.
+    as_of_file : Path
+        The test file's as-of file.
+    tmp_path_factory : pytest.TempPathFactory
+        pytest's own fixture, which makes temporary folders.
 
-stopped = stops(loop.advance)
-check("a second advance stops: nothing newer to advance to",
-      "Nothing to advance to" in stopped and AS_OF.read_text() == "2026-06\n" and len(loop.read_ledger()) == 4, stopped)
+    Returns
+    -------
+    dict
+        "months", the month folders the agent sandbox holds; "practice", the three numbers
+        practice.py prints there for the regression against WITH_YESTERDAY; "row" and
+        "brief", turn 2's row and brief; "second_advance", the line a second advance stopped
+        with; and "as_of" and "rows", the as-of file and the full ledger after it.
+    """
+    months = sorted(in_agent_sandbox(tmp_path_factory.mktemp("agent"), "ls", "/data").split())
+    printed = in_agent_sandbox(tmp_path_factory.mktemp("agent"), "python", "practice.py", "champion.py", "model.py")
+    lines = [line.split() for line in printed.splitlines() if ":" in line]
+    row, brief = play(WITH_YESTERDAY)
+    return {"months": months, "practice": {words[0].rstrip(":"): float(words[1]) for words in lines},
+            "row": row, "brief": brief, "second_advance": stops(loop.advance),
+            "as_of": as_of_file.read_text(), "rows": loop.read_ledger()}
+
+
+def test_the_agent_sandbox_holds_data_through_2024_12_24_months_from_2023_01(turn_2):
+    months = turn_2["months"]
+    assert (len(months), months[:1], months[-1:]) == (24, ["month=2023-01"], ["month=2024-12"])
+
+
+def test_practice_py_scores_the_newest_12_months_of_that_data(turn_2):
+    # 2024-01 to 2024-12: 2.970 against 2.922, won 86.18%
+    assert turn_2["practice"] == {"champion_mae": 2.97, "model_mae": 2.922, "wins_pct": 86.18}
+
+
+def test_a_turn_after_the_advance_its_row_is_turn_2_under_the_as_of_date_2026_06(turn_2):
+    assert cells(turn_2["row"], "turn", "as_of") == ["2", "2026-06"]
+
+
+def test_that_turn_the_loop_measured_the_same_practice_numbers_as_practice_py_too_few_wins_to_be_judged(turn_2):
+    assert cells(turn_2["row"], *PRACTICE, "verdict", *VALIDATION) == ["2.97", "2.922", "86.18", "dropped on practice", "-", "-", "-"]
+
+
+def test_that_turn_the_brief_named_the_new_dates(turn_2):
+    # data 2023-01 to 2024-12 and practice 2024-01 to 2024-12
+    assert "`/data` holds 2023-01 to 2024-12" in turn_2["brief"]
+    assert "practice period, 2024-01 to 2024-12" in turn_2["brief"]
+
+
+def test_a_second_advance_stops_nothing_newer_to_advance_to(turn_2):
+    assert "Nothing to advance to" in turn_2["second_advance"]
+    assert turn_2["as_of"] == "2026-06\n"
+    assert len(turn_2["rows"]) == 4
 
 
 # --- One more month arrives: before the next advance it is mounted nowhere -------------------
 
-run("scripts/ingest.py", "--through", "2026-07")
-check("ingest --through 2026-07 adds one month", store.months()[-1] == "2026-07", store.months()[-1])
-check("the agent's months still end at 2024-12", loop.agent_months()[-1] == "2024-12", loop.agent_months()[-1])
+def newest_month_in_the_model_sandbox(model_path, period) -> float:
+    """Start a model sandbox for one period and ask the model that names its newest month.
 
-# This model says which is its newest month, as its guess: month=2024-06 comes back as 202406.
-names_newest = write_model("newest", '''
-import os
+    Parameters
+    ----------
+    model_path : Path
+        The saved NAMES_ITS_NEWEST_MONTH model.
+    period : str
+        The period the sandbox is opened for: "practice", "val" or "holdout".
 
-
-def fit(history) -> None:
-    return None
-
-
-def predict(state, history, today) -> float:
-    return float(max(os.listdir("/data")).removeprefix("month=").replace("-", ""))
-''')
-for period, newest in [("practice", 202312), ("val", 202412), ("holdout", 202512)]:
-    sandbox = judge.open_model_sandbox(names_newest, period)
+    Returns
+    -------
+    float
+        Its newest month folder, as a number: month=2024-06 is 202406.
+    """
+    sandbox = judge.open_model_sandbox(model_path, period)
     guess = judge.request(sandbox, {"op": "predict", "today": {"date": "2000-01-01"}})["guess"]
     sandbox.stdin.close()
     sandbox.wait()
-    check(f"model sandbox, scoring {period} under 2026-06: its newest month is the one before the period, {newest}",
-          guess == newest, f"got {guess!r}")
+    return guess
+
+
+@pytest.fixture(scope="module")
+def one_more_month_arrived(turn_2, models) -> dict:
+    """Run `ingest.py --through 2026-07`, and ask what the sandboxes hold: the as-of date is still 2026-06.
+
+    Parameters
+    ----------
+    turn_2 : dict
+        The step before: the as-of date is 2026-06, and so is the store's newest month.
+    models : dict[str, Path]
+        The saved test models.
+
+    Returns
+    -------
+    dict
+        "newest", the store's newest month; "agent_newest", the newest month the agent has;
+        and "model_sandbox_newest", the newest month in the model sandbox for each period.
+    """
+    run("scripts/ingest.py", "--through", "2026-07")
+    return {"newest": store.months()[-1], "agent_newest": loop.agent_months()[-1],
+            "model_sandbox_newest": {period: newest_month_in_the_model_sandbox(models["newest"], period)
+                                     for period in ("practice", "val", "holdout")}}
+
+
+def test_ingest_through_2026_07_adds_one_month(one_more_month_arrived):
+    assert one_more_month_arrived["newest"] == "2026-07"
+
+
+def test_the_agents_months_still_end_at_2024_12(one_more_month_arrived):
+    assert one_more_month_arrived["agent_newest"] == "2024-12"
+
+
+@pytest.mark.parametrize("period, newest", [("practice", 202312), ("val", 202412), ("holdout", 202512)])
+def test_model_sandbox_under_2026_06_its_newest_month_is_the_one_before_the_period(period, newest, one_more_month_arrived):
+    assert one_more_month_arrived["model_sandbox_newest"][period] == newest
 
 
 # --- The next advance moves one month, and ideas are judged on the new validation period ----
 
-stopped = stops(loop.advance)
-row = loop.read_ledger()[-1]
-check("advance after one more month: as_of.txt reads 2026-07", stopped == "" and AS_OF.read_text() == "2026-07\n", stopped or AS_OF.read_text())
-check("its row holds the champion's scores on the periods one month on, 2.917 and 2.807",
-      cells(row, "as_of", "verdict") == ["2026-07", "advanced"]
-      and (float(row["practice"]), float(row["val_mae"])) == EXPECTED["2026-07"]["regression"][:2], row)
-check("agent's copy: the top line follows the newest advance", agent_ledger()[0] == "# Champion: turn 1, practice 2.917 MWh", agent_ledger()[0])
+@pytest.fixture(scope="module")
+def advanced_to_2026_07(one_more_month_arrived, as_of_file) -> dict:
+    """Advance again, with the store reaching 2026-07, and play turn 3 (WITH_YESTERDAY again).
 
-row = play(WITH_YESTERDAY)
-check("a turn under 2026-07: the same idea now wins 95.17% on practice, so it is judged, on 2025-02 to 2026-01",
-      cells(row, "turn", "as_of", *PRACTICE, "verdict") == ["3", "2026-07", "2.917", "2.846", "95.17", "thrown away"], row)
-check("it is the 2nd try: the try count is still the plain count of judged ideas, so the bar is 97.5%",
-      cells(row, *VALIDATION) == ["2.812", "44.65", "97.5"], cells(row, *VALIDATION))
+    Parameters
+    ----------
+    one_more_month_arrived : dict
+        The step before: the store reaches 2026-07, and the as-of date is 2026-06.
+    as_of_file : Path
+        The test file's as-of file.
+
+    Returns
+    -------
+    dict
+        "stopped", the line the advance stopped with ("" if it ran to the end); "as_of", the
+        text of the as-of file; "advanced_row", the row the advance added; "agent_ledger_top",
+        the first line of the agent's copy; and "row", turn 3's row.
+    """
+    stopped = stops(loop.advance)
+    seen = {"stopped": stopped, "as_of": as_of_file.read_text(), "advanced_row": loop.read_ledger()[-1],
+            "agent_ledger_top": agent_ledger()[0]}
+    seen["row"], _ = play(WITH_YESTERDAY)
+    return seen
+
+
+def test_advance_after_one_more_month_as_of_txt_reads_2026_07(advanced_to_2026_07):
+    assert advanced_to_2026_07["stopped"] == ""
+    assert advanced_to_2026_07["as_of"] == "2026-07\n"
+
+
+def test_its_row_holds_the_champions_scores_on_the_periods_one_month_on(advanced_to_2026_07):
+    # 2.917 and 2.807
+    row = advanced_to_2026_07["advanced_row"]
+    assert cells(row, "as_of", "verdict") == ["2026-07", "advanced"]
+    assert (float(row["practice"]), float(row["val_mae"])) == EXPECTED["2026-07"]["regression"][:2]
+
+
+def test_agents_copy_the_top_line_follows_the_newest_advance(advanced_to_2026_07):
+    assert advanced_to_2026_07["agent_ledger_top"] == "# Champion: turn 1, practice 2.917 MWh"
+
+
+def test_a_turn_under_2026_07_the_same_idea_now_wins_95_17_pct_on_practice_so_it_is_judged(advanced_to_2026_07):
+    # judged on the validation period 2025-02 to 2026-01
+    assert cells(advanced_to_2026_07["row"], "turn", "as_of", *PRACTICE, "verdict") == ["3", "2026-07", "2.917", "2.846", "95.17", "thrown away"]
+
+
+def test_it_is_the_2nd_try_so_the_bar_is_97_5_pct(advanced_to_2026_07):
+    # the try count is still the plain count of judged ideas
+    assert cells(advanced_to_2026_07["row"], *VALIDATION) == ["2.812", "44.65", "97.5"]
 
 
 # --- loop.holdout(): the holdout period of the as-of date, with validation measured now ------
 
-printed = io.StringIO()
-with contextlib.redirect_stdout(printed):
-    loop.holdout()
-table = {line.split(":")[0]: line.split()[-2:] for line in printed.getvalue().splitlines() if line.startswith("turn ")}
-check("holdout: the baseline and the kept model, each with its validation score measured now and its holdout score",
-      table == {"turn 0": ["5.80", "5.88"], "turn 1": ["2.81", "2.72"]}, printed.getvalue())
-check("holdout: it says which months those are", "validation is 2025-02 to 2026-01, holdout is 2026-02 to 2026-07" in printed.getvalue(),
-      printed.getvalue().splitlines()[:1])
+@pytest.fixture(scope="module")
+def holdout_printed(advanced_to_2026_07) -> str:
+    """Run loop.holdout() under the as-of date 2026-07.
+
+    Parameters
+    ----------
+    advanced_to_2026_07 : dict
+        The step before: the as-of date is 2026-07, and one idea has been kept.
+
+    Returns
+    -------
+    str
+        What loop.holdout() printed.
+    """
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        loop.holdout()
+    return printed.getvalue()
+
+
+def test_holdout_the_baseline_and_the_kept_model_each_with_its_validation_score_measured_now_and_its_holdout_score(holdout_printed):
+    table = {line.split(":")[0]: line.split()[-2:] for line in holdout_printed.splitlines() if line.startswith("turn ")}
+    assert table == {"turn 0": ["5.80", "5.88"], "turn 1": ["2.81", "2.72"]}
+
+
+def test_holdout_it_says_which_months_those_are(holdout_printed):
+    assert "validation is 2025-02 to 2026-01, holdout is 2026-02 to 2026-07" in holdout_printed
 
 
 # --- loop.reset(): back to the as-of date in the start row; the store keeps its months -------
 
-loop.reset()
-check("reset: as_of.txt reads 2025-12 again", AS_OF.read_text() == "2025-12\n", AS_OF.read_text())
-check("reset: the store still holds the ingested months", store.months()[-1] == "2026-07", store.months()[-1])
-check("reset: the baseline is back, and the ledgers and history are cleared",
-      (loop.LAB / "model.py").read_text() == BASELINE and not loop.LEDGER.exists() and not loop.AGENT_LEDGER.exists() and not loop.HISTORY.exists())
+@pytest.fixture(scope="module")
+def after_reset(holdout_printed, as_of_file) -> dict:
+    """Reset: loop.reset().
+
+    Parameters
+    ----------
+    holdout_printed : str
+        The step before: the as-of date is 2026-07.
+    as_of_file : Path
+        The test file's as-of file.
+
+    Returns
+    -------
+    dict
+        "as_of", the text of the as-of file; "newest", the store's newest month; "model",
+        lab/model.py; and "left_behind", which of the ledgers and history/ still exist.
+    """
+    loop.reset()
+    return {"as_of": as_of_file.read_text(), "newest": store.months()[-1], "model": (loop.LAB / "model.py").read_text(),
+            "left_behind": [path.name for path in (loop.LEDGER, loop.AGENT_LEDGER, loop.HISTORY) if path.exists()]}
+
+
+def test_reset_as_of_txt_reads_2025_12_again(after_reset):
+    assert after_reset["as_of"] == "2025-12\n"
+
+
+def test_reset_the_store_still_holds_the_ingested_months(after_reset):
+    assert after_reset["newest"] == "2026-07"
+
+
+def test_reset_the_baseline_is_back_and_the_ledgers_and_history_are_cleared(after_reset):
+    assert after_reset["model"] == BASELINE
+    assert after_reset["left_behind"] == []
+
 
 # With no ledger yet, an advance starts one first, as `run` does, so the start row still
 # records the as-of date the research started under. The baseline is measured before the
 # ledger is made, so a baseline that can't be measured leaves nothing half made.
-(loop.LAB / "model.py").write_text(CRASHES)
-stopped = stops(loop.advance)
-check("advance with no ledger and a baseline that can't be measured: it stops, and no ledger is left behind",
-      "could not be measured" in stopped and not loop.LEDGER.exists() and not loop.AGENT_LEDGER.exists()
-      and AS_OF.read_text() == "2025-12\n", stopped or f"ledger exists: {loop.LEDGER.exists()}")
-(loop.LAB / "model.py").write_text(BASELINE)
 
-stopped = stops(loop.advance)
-rows = loop.read_ledger()
-check("advance with no ledger: the baseline's start row is measured under 2025-12, then the advanced row under 2026-07",
-      stopped == "" and [cells(r, "turn", "as_of", "verdict", "practice", "val_mae") for r in rows]
-      == [["0", "2025-12", "start", "5.656", "5.782"], ["-", "2026-07", "advanced", "5.65", "5.801"]], stopped or rows)
-loop.reset()
-check("so a reset after that still returns to 2025-12", AS_OF.read_text() == "2025-12\n", AS_OF.read_text())
+@pytest.fixture(scope="module")
+def advanced_with_no_ledger(after_reset, as_of_file) -> dict:
+    """With no ledger: try an advance whose baseline crashes, then advance, then reset again.
+
+    Parameters
+    ----------
+    after_reset : dict
+        The step before: no ledgers, the baseline as model.py, the as-of date 2025-12.
+    as_of_file : Path
+        The test file's as-of file.
+
+    Returns
+    -------
+    dict
+        "crashed", the line the first advance stopped with; "left_behind", which ledgers
+        exist after it; and "as_of_after_crashed", the as-of file then. "stopped", the line
+        the second advance stopped with ("" if it ran to the end), and "rows", the full
+        ledger after it. "as_of_after_reset", the as-of file after the reset that follows.
+    """
+    (loop.LAB / "model.py").write_text(CRASHES)
+    seen = {"crashed": stops(loop.advance),
+            "left_behind": [path.name for path in (loop.LEDGER, loop.AGENT_LEDGER) if path.exists()],
+            "as_of_after_crashed": as_of_file.read_text()}
+    (loop.LAB / "model.py").write_text(BASELINE)
+
+    seen["stopped"] = stops(loop.advance)
+    seen["rows"] = loop.read_ledger()
+    loop.reset()
+    seen["as_of_after_reset"] = as_of_file.read_text()
+    return seen
 
 
-shutil.rmtree(TMP)
-print("all checks passed" if failures == 0 else f"{failures} check(s) failed")
-sys.exit(1 if failures else 0)
+def test_advance_with_no_ledger_and_a_baseline_that_cant_be_measured_it_stops_and_no_ledger_is_left_behind(advanced_with_no_ledger):
+    assert "could not be measured" in advanced_with_no_ledger["crashed"]
+    assert advanced_with_no_ledger["left_behind"] == []
+    assert advanced_with_no_ledger["as_of_after_crashed"] == "2025-12\n"
+
+
+def test_advance_with_no_ledger_the_baselines_start_row_is_measured_under_2025_12_then_the_advanced_row_under_2026_07(advanced_with_no_ledger):
+    assert advanced_with_no_ledger["stopped"] == ""
+    assert [cells(row, "turn", "as_of", "verdict", "practice", "val_mae") for row in advanced_with_no_ledger["rows"]] == [
+        ["0", "2025-12", "start", "5.656", "5.782"], ["-", "2026-07", "advanced", "5.65", "5.801"]]
+
+
+def test_so_a_reset_after_that_still_returns_to_2025_12(advanced_with_no_ledger):
+    assert advanced_with_no_ledger["as_of_after_reset"] == "2025-12\n"
