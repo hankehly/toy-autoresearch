@@ -2,10 +2,13 @@
 
 The smallest working version of an agent research loop, with guards against overfitting.
 
-    lab/        the agent's files: program.md (your brief), model.py, check.py,
-                practice.py (scores a change on the practice year), ledger.tsv (the agent's
-                copy of the ledger). Its data is not a file here: see data/
-    judge/      the frozen judge
+    lab/        the agent's files: program.md (your brief; the loop fills in its dates each
+                turn), model.py, check.py, practice.py (scores a change on the practice
+                period), ledger.tsv (the agent's copy of the ledger). Its data is not a
+                file here: see data/
+    judge/      the frozen judge. It works out the four periods from the as-of date
+    as_of.txt   the as-of date: one month, the last one the research may use. Only
+                `loop.py advance` and `loop.py reset` write it
     store.py    the data store's functions: list months, read months, write a month.
                 The loop, the judge and the scripts reach the data only through them
     data/       not in git; `uv run scripts/make_data.py` builds it:
@@ -14,7 +17,7 @@ The smallest working version of an agent research loop, with guards against over
                          folders, read-only, and those are the only months it can see
                 future/  a pretend future, 2023-01 to 2042-12, that only ingest.py reads
     loop.py     each turn: fresh workspace -> fresh agent makes one change -> the loop
-                measures it on the practice year -> judge compares -> keep or throw away -> ledgers
+                measures it on the practice period -> judge compares -> keep or throw away -> ledgers
     ledger.tsv  the full ledger, validation scores included; the agent never sees it
     history/    every model the agent wrote, plus Claude Code's whole response for the turn
                 (the reply and the cost, or the errors if the run failed)
@@ -33,10 +36,12 @@ The smallest working version of an agent research loop, with guards against over
     tests/      checks to run after changing the loop or a sandbox:
                 test_sandboxes.py  proves the isolation holds (about 30 seconds)
                 test_loop.py       proves each kind of turn is logged as promised (about 1 minute)
+                test_as_of.py      proves the periods follow the as-of date, that an advance
+                                   moves them, and that no date is written into the code (about 1 minute)
                 test_store.py      proves the store holds the same days as ever, and that only
                                    ingest.py adds months (about 30 seconds)
                 test_size.py       scores a 20-year, 303-column store and prints the time (about 30 seconds)
-    docs/       the diagrams below
+    docs/       the diagrams below, and adr/: why the periods stay fixed between advances
 
 ## One turn of the loop
 
@@ -46,19 +51,41 @@ The diagram is a `.drawio.png`: it displays as an image and also opens for editi
 
 ## Who sees which months
 
-    Jan-Jun 2023   Jul 2023-Jun 2024   Jul 2024-Jun 2025    Jul-Dec 2025
-    training       agent's practice    judge's validation   holdout
-    <------ agent has these ------->   agent never sees     scored once, at the end
+No period is written into the code as dates. One file, `as_of.txt`, holds one month: the
+as-of date, the last month the research may use. The judge counts the four periods back
+from it (`uv run judge/judge.py periods` prints them):
+
+    period      rule                                    as-of date 2025-12   as-of date 2026-06
+    holdout     the 6 months ending at the as-of date   2025-07 to 2025-12   2026-01 to 2026-06
+    validation  the 12 months before that               2024-07 to 2025-06   2025-01 to 2025-12
+    practice    the 12 months before that               2023-07 to 2024-06   2024-01 to 2024-12
+    training    every earlier month in the store        2023-01 to 2023-06   2023-01 to 2023-12
+
+The agent has the training and practice periods. It never sees the validation period, where
+the judge decides what is kept, and the holdout period is scored once, at the end. The
+three lengths are settings at the top of `judge/judge.py`.
 
 Every score walks forward a month at a time: the model is trained on everything before
-the month, then predicts each day of it. So July 2024 is predicted from 18 months of
-history, June 2025 from 29.
+the month, then predicts each day of it. So with the as-of date 2025-12, 2024-07 is
+predicted from 18 months of history and 2025-06 from 29.
 
-The months above are fixed in the code for now. Real data keeps arriving, so the toy has a
-pretend clock: `uv run scripts/ingest.py --through 2026-06` moves the months up to 2026-06
-from `data/future/` into the store, whole months only, and never changes a month already
-there. Nothing reads the new months yet, so every score stays the same. In a real project
-the job that builds the data does this.
+Real data keeps arriving, so the toy has a pretend clock: `uv run scripts/ingest.py --through 2026-06`
+moves the months up to 2026-06 from `data/future/` into the store, whole months only, and
+never changes a month already there. In a real project the job that builds the data does this.
+
+Months that arrive move nothing by themselves. The periods stay where they are, and no
+sandbox is shown a month after the as-of date, until a person runs `uv run loop.py advance`
+between nights. That moves the as-of date to the store's newest month, so all four periods
+move forward by the same number of months. It then measures the champion on the new practice
+and validation periods and adds one `advanced` row to the ledgers. It changes no model and
+scores nothing on the holdout period.
+
+The periods must not move while ideas are being judged: the keep rule counts tries against
+one validation period and compares each idea with a champion measured on it
+(`docs/adr/0001-periods-frozen-at-an-as-of-date.md`). Scores from before and after an
+advance come from different months, so every ledger row records its as-of date.
+
+![The same rule at five moments: months that arrive move no period, and advances of 6, 1 and 5 months move all four periods forward while the training period grows](docs/periods.drawio.png)
 
 ## Run it
 
@@ -70,11 +97,14 @@ Needs Docker Desktop (running), Claude Code and [uv](https://docs.astral.sh/uv/)
     uv run tests/test_sandboxes.py    # check that the isolation holds (about 30 seconds)
     uv run tests/test_loop.py         # check the loop's verdicts and ledgers, with a stand-in agent (about 1 minute)
     uv run tests/test_store.py        # check the data store, in a temporary folder (about 30 seconds)
+    uv run tests/test_as_of.py        # check the periods and an advance, in a temporary folder (about 1 minute)
     claude setup-token                # once: a login token the agent sandbox can use
     export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>
     uv run loop.py run 5              # five agent turns
-    uv run loop.py holdout            # score the holdout once, at the end
-    uv run loop.py reset              # start over from the baseline
+    uv run loop.py holdout            # score the holdout period once, at the end
+    uv run scripts/ingest.py --through 2026-06   # later: new months arrive in the store
+    uv run loop.py advance            # by hand, between nights: move the as-of date to the store's newest month
+    uv run loop.py reset              # start over from the baseline, at the as-of date the research started under
     uv run scripts/night_sim.py       # the overnight experiment, no agent needed (about 5 minutes)
 
 The ledgers and history/ in this folder are from the example run below (agent: Claude Sonnet
@@ -95,6 +125,8 @@ via `claude -p`; change the model in loop.py). `uv run loop.py reset` clears the
     8     add squared heating/cooling degrees     3.21   2%      -      -      -       dropped on practice
           answer key (not part of the run)                       2.83                                       2.77
 
+Every row was measured under the as-of date 2025-12: the practice year is 2023-07 to
+2024-06, the validation year 2024-07 to 2025-06 and the holdout 2025-07 to 2025-12.
 "Won" is the share of 10,000 reshuffles of the year's weeks in which the idea beat the
 champion of the time. The practice columns were measured afterwards, for turns 0-6.
 The answer key is the recipe that made the data, which a real project doesn't have. The
@@ -120,13 +152,18 @@ at 2% of practice reshuffles, the same numbers the agent reported, and it wasn't
 Every turn adds a row to the full ledger, `ledger.tsv`, which stays on the host. The agent's
 copy, `lab/ledger.tsv`, is rewritten from it after every turn without the validation columns:
 
-    full ledger    turn, idea, practice_champion, practice, practice_wins,
+    full ledger    turn, as_of, idea, practice_champion, practice, practice_wins,
                    val_mae, win_pct, bar_pct, verdict, lesson, reply_check
-    agent's copy   turn, idea, practice_champion, practice, practice_wins, verdict, lesson
+    agent's copy   turn, as_of, idea, practice_champion, practice, practice_wins, verdict, lesson
 
-The agent sees practice numbers, which come from a year it already has, and the judge's
+The agent sees practice numbers, which come from months it already has, and the judge's
 verdict. If it also saw validation scores, it could pick and combine near-misses by them,
-which is tuning on the judge's year one row at a time (finding 6 in CLAUDE.md).
+which is tuning on the judge's period one row at a time (finding 6 in CLAUDE.md).
+
+`as_of` is the as-of date the row was measured under. Old rows are never measured again, so
+scores from rows with different as-of dates come from different months and can't be compared
+directly. The line on top of the agent's copy always gives the champion's newest practice
+score: after an advance, the one in the `advanced` row.
 
 The loop measures the practice numbers itself, with the model in the model sandbox, so
 they don't depend on what the agent reports. The agent finishes each turn with a structured
@@ -143,8 +180,9 @@ numbers match the loop's: `ok`, `practice mismatch`, `not run` (the agent report
     crashed              model.py failed in the loop's practice run or the judge's   no
     invalid reply        no valid structured reply; practice is still measured       no
     start                the baseline row                                            no
+    advanced             the as-of date moved; the champion was measured again       no
 
-Only a try raises the bar.
+Only a try raises the bar. An `advanced` row is not a turn either, so it has no turn number.
 
 ## What night_sim.py found (10 nights of 300 ideas each, MWh)
 
@@ -168,7 +206,7 @@ Whole weeks are re-dealt together because neighbouring days share weather.
 
 ## Three guards against overfitting
 
-1. The agent never has the answers for the year it's graded on, so it can't tune on it.
+1. The agent never has the answers for the period it's graded on, so it can't tune on it.
 2. The bar rises with the number of tries, so a long night can't win by sheer volume.
 3. The holdout is scored once. If you change things because of what it says, it becomes
    another validation set, so then you need fresh months to check on.

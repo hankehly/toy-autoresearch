@@ -13,20 +13,27 @@ The lessons are meant to carry over to real problems like these.
 ## How it works
 - `loop.py run N`: each turn copies `lab/` to a temp folder, where a fresh `claude -p` agent
   reads `program.md` and `ledger.tsv`, changes only `model.py`, checks it with `check.py` and
-  scores it against the champion on the practice year with `practice.py`. It finishes with a
+  scores it against the champion on the practice period with `practice.py`. It finishes with a
   structured reply (idea, lesson, practice numbers, submit or not), which the loop checks
   against `REPLY_SCHEMA` in `loop.py`. Only `model.py` comes back. The loop measures it on
-  the practice year itself (`judge.py practice`, in the model sandbox). If the agent
+  the practice period itself (`judge.py practice`, in the model sandbox). If the agent
   submitted it and the loop measured at least `SUBMIT_PCT` (90%) of practice reshuffles won,
-  `judge/judge.py` compares it with the champion on the validation year, and it is kept or
+  `judge/judge.py` compares it with the champion on the validation period, and it is kept or
   thrown away.
+- `lab/program.md` is a template: it names no date. Each turn `brief()` in `loop.py` fills
+  in the `{names}` (the agent's months, the practice period, the period lengths) and writes
+  the result into the workspace.
 - Two ledgers. `ledger.tsv` at the repo root is the full record, validation scores
   included, and the try count behind the bar comes from it. `lab/ledger.tsv` is the agent's
   copy, rewritten from it after every turn: practice numbers, verdict and lesson, and no
-  number from the validation year. Verdicts: `KEPT` and `thrown away` were judged and count
+  number from the validation period. Verdicts: `KEPT` and `thrown away` were judged and count
   as tries; `dropped on practice` (changed, but not submitted or under `SUBMIT_PCT`),
   `no change`, `crashed` and `invalid reply` weren't and don't. `reply_check` in the full ledger says whether the
-  agent's practice numbers matched the loop's.
+  agent's practice numbers matched the loop's. Every row records the as-of date it was
+  measured under (`as_of`); old rows are never measured again. An `advanced` row is added by
+  `loop.py advance`: it has no turn number, is not a try, and holds the champion's practice
+  and validation scores under the new as-of date. The top line of the agent's copy uses the
+  champion's newest practice score.
 - Data store (`store.py`; `data/`, not in git). One folder per month in the layout Spark
   writes: `data/store/month=2023-01/part.parquet`, columns `date`, `temp_forecast`, `load`.
   The loop, the judge and the scripts reach the data only through `store.py`'s functions
@@ -34,7 +41,7 @@ The lessons are meant to carry over to real problems like these.
   `scripts/make_data.py` builds `data/future/` (a pretend future, 2023-01 to 2042-12) and
   fills the store through 2025-12. `scripts/ingest.py --through 2026-06` moves later months
   from the future into the store: whole months, never changing one already there. Nothing
-  reads months after 2025-12 yet (issue #4, the as-of date).
+  reads a month after the as-of date, and no sandbox is shown one.
 - Isolation (`docker/`). The host runs only code a human wrote (`loop.py`, `judge.py`) and
   holds the whole data store. The agent works in the agent sandbox, a container that sees
   only the turn's temp folder and, read-only at `/data`, the month folders up to the end of
@@ -46,10 +53,28 @@ The lessons are meant to carry over to real problems like these.
   and `reveal` hands over each day's load only after the guess. The months a sandbox can see
   are exactly the month folders mounted into it. `tests/test_sandboxes.py` proves the
   isolation holds.
-- Months. Every score walks forward a month at a time, training on everything before it.
-  Jan-Jun 2023: training. Jul 2023-Jun 2024: the agent's practice year.
-  Jul 2024-Jun 2025: the judge's scored year (validation); the agent never has it.
-  Jul-Dec 2025: holdout, scored once at the end.
+- Periods and the as-of date (issue #4; words in `GLOSSARY.md`, reasons in `docs/adr/0001`).
+  Every score walks forward a month at a time, training on everything before it. No period
+  is written down as dates: `as_of.txt` in the repo root holds one month, the as-of date, and
+  `periods()` in `judge/judge.py` counts the periods back from it with three settings there.
+  `uv run judge/judge.py periods` prints them; `loop.py` asks the judge the same way.
+
+  | Period | Rule | As-of date 2025-12 (a fresh checkout) | As-of date 2026-06 |
+  |---|---|---|---|
+  | Holdout, scored once at the end | The 6 months ending at the as-of date | 2025-07 to 2025-12 | 2026-01 to 2026-06 |
+  | Validation, the agent never has it | The 12 months before that | 2024-07 to 2025-06 | 2025-01 to 2025-12 |
+  | Practice, the agent's own | The 12 months before that | 2023-07 to 2024-06 | 2024-01 to 2024-12 |
+  | Training | Every earlier month in the store | 2023-01 to 2023-06 | 2023-01 to 2023-12 |
+
+  The judge stops if the store does not reach the as-of date or has no month before the
+  practice period.
+- `loop.py advance`, by hand, between nights: moves the as-of date to the store's newest
+  month (one month or many), measures the champion on the new practice and validation
+  periods, and adds the `advanced` row. It changes no model and scores nothing on the
+  holdout period. If the champion can't be measured, the as-of date is put back. With
+  nothing newer in the store it stops. `loop.py reset` puts the as-of date back to the one
+  in the ledger's `start` row and leaves the store alone. `loop.py holdout` prints each
+  model's validation score measured now, beside its holdout score.
 - Keep rule: reshuffle the 52 scored weeks 10,000 times. The k-th idea tested must win at
   least 1 - 5%/k of reshuffles (95% for the 1st, 99.5% for the 10th, 99.95% for the 100th),
   which keeps the expected number of lucky keeps under one for a 300-idea night.
@@ -112,6 +137,10 @@ The lessons are meant to carry over to real problems like these.
   same scored year.
 - Port the judge to the real load-forecasting data. For racing, score by log loss against the
   market's odds rather than by ROI.
+- After an advance the try count is still the plain count of judged ideas. Part 3 of the
+  as-of work makes old tries fade (`docs/adr/0002`), and `scripts/night_sim.py` keeps its
+  fixed dates until then. Nothing stops an advance during a night; add a guard only if it
+  goes wrong.
 
 ## Practical notes
 - uv manages Python 3.12 and the packages (`pyproject.toml`, `uv.lock`). Run everything with
@@ -121,9 +150,11 @@ The lessons are meant to carry over to real problems like these.
 - A fresh checkout has no data: run `uv run scripts/make_data.py` once. It makes the same
   days every time, and `loop.py` and `judge.py` stop with one line asking for it if the
   store is missing. Setting `TOY_DATA` to a folder points `store.py`, and so everything, at
-  a different data folder; the tests use it to work on a temporary store.
+  a different data folder; the tests use it to work on a temporary store. `TOY_AS_OF` does
+  the same for the as-of file: every test holds its own as-of date in a temporary file, so
+  the scores it expects don't depend on what `as_of.txt` says.
 - `scripts/` holds helpers outside the main loop (`make_data.py`, `ingest.py`, `answer_key.py`, the simulations). Run them from the repo root.
-- `tests/` holds the four test scripts (`test_sandboxes.py`, `test_loop.py`, `test_store.py`, `test_size.py`). Each is a plain script, not pytest: run it from the repo root with `uv run`.
+- `tests/` holds the five test scripts (`test_sandboxes.py`, `test_loop.py`, `test_store.py`, `test_size.py`, `test_as_of.py`). Each is a plain script, not pytest: run it from the repo root with `uv run`.
 - Docker Desktop must be running. `uv run loop.py build` builds the three images (`run` and
   `holdout` do it first anyway); `uv run tests/test_sandboxes.py` checks the isolation
   (about 30 s).
@@ -134,14 +165,21 @@ The lessons are meant to carry over to real problems like these.
 - The proxy stays up after a run; `docker exec toy-agent-proxy cat /var/log/squid/access.log`
   lists every request the agent sent through it, until the next run or test run replaces
   the proxy. Attempts to go around the proxy fail without a trace.
-- `uv run loop.py reset` returns to the baseline and clears the ledger and history.
+- `uv run loop.py reset` returns to the baseline and to the as-of date the research started
+  under, and clears the ledger and history.
 - If you change a sandbox or the messages, run `tests/test_sandboxes.py`. Docker is a
   strong fence for an over-eager agent, not a guarantee against hostile code.
 - If you change `turn()`, the ledgers or the reply schema, run `tests/test_loop.py` (about
   1 minute; real judge and model sandbox, a stand-in agent, no token needed).
 - `lab/practice.py` carries its own copy of the judge's walk and reshuffle, because the
-  agent's workspace has no `judge/`. Change them together; `tests/test_loop.py` checks
-  that they print the same numbers.
+  agent's workspace has no `judge/`. Its practice period is the newest 12 months mounted at
+  `/data` (`PRACTICE_MONTHS`, the same setting as the judge's). Change them together;
+  `tests/test_loop.py` checks that they print the same numbers, and `tests/test_as_of.py`
+  checks it again after an advance.
+- If you change the periods, `advance`, `reset`, `holdout` or the brief's template, run
+  `tests/test_as_of.py` (about 1 minute; a temporary store, as-of file and lab). It also
+  searches `loop.py`, `judge/`, `lab/` and `docker/` for written-out dates and fails if it
+  finds one: write periods as rules there, and dates in ISO 8601 (`2025-12`) everywhere else.
 - If you change `store.py`, `scripts/make_data.py` or `scripts/ingest.py`, run
   `tests/test_store.py` (about 30 s). It holds the SHA-256 of the old `judge/full_data.csv`,
   so the days 2023-01-01 to 2025-12-31 can't change unnoticed. `tests/test_size.py` scores a
