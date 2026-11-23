@@ -14,7 +14,7 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # the tests take about 2 minutes on a Mac; stop a run that hangs
+    timeout-minutes: 20  # the tests take about 3 minutes on a Mac; stop a run that hangs
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.4.0  # uv installs Python 3.12 and the locked packages on the first `uv run`

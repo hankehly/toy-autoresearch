@@ -5,7 +5,9 @@
 Every turn here is a real loop.turn() on a temporary copy of lab/, with the real judge and
 the real model sandbox. Only the agent is replaced: a stand-in that changes model.py and
 returns a reply, as Claude Code would. So no login token is needed, and nothing in lab/,
-history/ or the ledgers is touched. About 1 minute.
+history/ or the ledgers is touched. The as-of date is held at 2025-12 in a temporary file
+(see as_of_file in conftest.py), so the scores expected here stay right after the real one
+has advanced. About 1 minute.
 
 The 14 turns are played once, in order, by the `turns` fixture, which records what each
 turn left behind. Each test then reads one turn's record, so any test can run alone.
@@ -441,13 +443,13 @@ TWO_JUDGED = "Ideas judged: 2. The next must win 98.33%"
 
 # --- The two ledgers, after loop.start() --------------------------------------------------
 
-def test_start_the_full_ledger_has_the_columns_issue_1_lists(started):
-    assert list(started.row) == ["turn", "idea", "practice_champion", "practice", "practice_wins",
+def test_start_the_full_ledger_has_the_columns_issue_1_lists_and_issue_4s_as_of(started):
+    assert list(started.row) == ["turn", "as_of", "idea", "practice_champion", "practice", "practice_wins",
                                  "val_mae", "win_pct", "bar_pct", "verdict", "lesson", "reply_check"]
 
 
-def test_start_the_baseline_row_has_its_practice_score_and_its_validation_score(started):
-    assert cells(started.row, "turn", "practice", "val_mae", "verdict") == ["0", "5.656", "5.782", "start"]
+def test_start_the_baseline_row_has_its_as_of_date_its_practice_score_and_its_validation_score(started):
+    assert cells(started.row, "turn", "as_of", "practice", "val_mae", "verdict") == ["0", "2025-12", "5.656", "5.782", "start"]
 
 
 def test_start_the_agents_copy_has_three_comment_lines(started):
@@ -459,11 +461,11 @@ def test_start_the_agents_copy_has_three_comment_lines(started):
 
 
 def test_start_the_agents_copy_has_no_validation_column(started):
-    assert started.agent_ledger[3].split("\t") == ["turn", "idea", "practice_champion", "practice", "practice_wins", "verdict", "lesson"]
+    assert started.agent_ledger[3].split("\t") == ["turn", "as_of", "idea", "practice_champion", "practice", "practice_wins", "verdict", "lesson"]
 
 
 def test_start_the_agents_copy_has_the_baseline_row_without_its_validation_score(started):
-    assert started.agent_ledger[4].split("\t") == ["0", "baseline: average of the last 7 days", "-", "5.656", "-", "start", "-"]
+    assert started.agent_ledger[4].split("\t") == ["0", "2025-12", "baseline: average of the last 7 days", "-", "5.656", "-", "start", "-"]
 
 
 # --- Turn 1: a clear gain, submitted with the right practice numbers ----------------------
@@ -660,7 +662,7 @@ def test_turn_14_the_bar_stays_where_turn_12_left_it(turns):
     assert TWO_JUDGED in turns[14].agent_ledger[1]
 
 
-# --- After 14 turns: nothing from the validation year has reached the agent ----------
+# --- After 14 turns: nothing from the validation period has reached the agent ----------
 
 VAL_NUMBERS = ["5.782", "2.915", "2.893", "67.91"]  # every validation score and win share the judge gave above
 
@@ -675,7 +677,7 @@ def test_after_14_turns_the_agents_copy_holds_none_of_them(turns):
 
 
 def test_after_14_turns_the_agents_copy_has_one_row_per_turn_with_the_verdicts(turns):
-    verdicts = [line.split("\t")[5] for line in turns[14].agent_ledger[4:]]
+    verdicts = [line.split("\t")[6] for line in turns[14].agent_ledger[4:]]
     assert verdicts == (["start", "KEPT", "dropped on practice"] + ["invalid reply"] * 6
                         + ["no change", "crashed", "crashed", "thrown away", "no change", "dropped on practice"])
 

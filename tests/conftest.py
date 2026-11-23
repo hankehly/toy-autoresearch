@@ -2,15 +2,16 @@
 
 Run the tests from the repo root (Docker must be running; no login token is needed):
 
-    uv run pytest                        # every test (about 2 minutes)
+    uv run pytest                        # every test (about 3 minutes)
     uv run pytest tests/test_store.py    # one file
     uv run pytest -k proxy               # the tests with "proxy" in their names
     uv run pytest -v                     # one line per test, by name
 
-No test touches data/, and none changes lab/, history/ or the ledgers. Each test file gets
-an empty data folder of its own (the data_folder fixture below), so a fresh checkout needs
-no `make_data.py` first. GitHub runs the same command on every pull request
-(.github/workflows/tests.yml).
+No test touches data/ or as_of.txt, and none changes lab/, history/ or the ledgers. Each
+test file gets an empty data folder of its own (the data_folder fixture below), so a fresh
+checkout needs no `make_data.py` first, and an as-of file of its own that says 2025-12 (the
+as_of_file fixture), so the scores a test expects stay right after the real as-of date has
+advanced. GitHub runs the same command on every pull request (.github/workflows/tests.yml).
 
 A fixture is a function that prepares something a test needs. A test asks for one by naming
 it as a parameter. "module" scope means it runs once for a test file, "session" scope once
@@ -25,6 +26,7 @@ from pathlib import Path
 
 import pytest
 
+import judge
 import loop
 import store
 
@@ -62,6 +64,33 @@ def data_folder(tmp_path_factory) -> Iterator[Path]:
         yield folder
     importlib.reload(store)  # TOY_DATA is as it was before, so the store is data/ again
     shutil.rmtree(folder)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def as_of_file(tmp_path_factory) -> Iterator[Path]:
+    """Give a test file an as-of file of its own, in place of as_of.txt. It says 2025-12,
+    as as_of.txt does on a fresh checkout.
+
+    TOY_AS_OF points the judge and the loop at the file. The scripts and the judge that a
+    test starts as separate programs follow TOY_AS_OF too, because they inherit it.
+
+    Parameters
+    ----------
+    tmp_path_factory : pytest.TempPathFactory
+        pytest's own fixture, which makes temporary folders.
+
+    Yields
+    ------
+    Path
+        The file. A test that advances the as-of date changes this file, never as_of.txt.
+    """
+    path = tmp_path_factory.mktemp("as-of") / "as_of.txt"
+    path.write_text("2025-12\n")
+    with pytest.MonkeyPatch.context() as patch:  # undoes its changes when the test file is done
+        patch.setenv("TOY_AS_OF", str(path))
+        patch.setattr(loop, "AS_OF", path)   # loop.py and judge.py read TOY_AS_OF once, when they are loaded,
+        patch.setattr(judge, "AS_OF", path)  # so point the copies already loaded here at the file too
+        yield path
 
 
 @pytest.fixture(scope="module")

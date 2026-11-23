@@ -4,7 +4,8 @@ through ingest. Run it from the repo root:
     uv run pytest tests/test_store.py
 
 Everything here happens in the test file's own data folder (see data_folder in conftest.py),
-so data/ is never touched. The scores come from the real judge and the real model sandbox.
+so data/ is never touched. The scores come from the real judge and the real model sandbox,
+with the as-of date held at 2025-12 in a temporary file (see as_of_file in conftest.py).
 About 30 seconds.
 
 The sections change one store, step by step, as a person would: no store, make_data.py,
@@ -135,7 +136,8 @@ def baseline(tmp_path_factory) -> Path:
 
 @pytest.mark.parametrize("command", [["judge/judge.py", "score", "val", "scripts/answer_key.py"],
                                      ["loop.py", "run", "1"],
-                                     ["loop.py", "holdout"]], ids=lambda command: " ".join(command[:2]))
+                                     ["loop.py", "holdout"],
+                                     ["loop.py", "advance"]], ids=lambda command: " ".join(command[:2]))
 def test_without_a_store_the_command_stops_with_one_line_that_says_to_run_make_data(command):
     stopped = run(*command)
     assert stopped.returncode != 0
@@ -258,7 +260,7 @@ def test_ingest_with_an_older_month_adds_nothing_and_removes_nothing(ingested):
 
 
 def test_after_ingest_the_judges_scores_are_the_same(ingested, baseline):
-    # nothing reads the new months yet
+    # months that arrive move no period until the as-of date advances
     assert val_scores(baseline) == KNOWN_SCORES
 
 

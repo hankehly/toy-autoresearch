@@ -1,22 +1,25 @@
 """The research loop. Each turn:
-  1. copy lab/ into a fresh, empty workspace
+  1. copy lab/ into a fresh, empty workspace, with the dates filled into program.md
   2. a fresh Claude Code session reads program.md + ledger.tsv and changes model.py. It works
      in the agent sandbox: a container that sees only that workspace and the months of the
      data store up to the end of the practice period, and reaches only Claude's API.
      It finishes with a structured reply: its idea, a lesson, its practice numbers, submit or not
   3. only model.py comes back, and the loop measures it against the champion on the practice
-     year itself (the judge does the measuring, in the model sandbox)
+     period itself (the judge does the measuring, in the model sandbox)
   4. if the agent submitted it and it won enough of the practice reshuffles (SUBMIT_PCT),
-     the judge compares it with the champion on the validation months, with a bar that
+     the judge compares it with the champion on the validation period, with a bar that
      rises with every idea tested (see judge.py)
   5. keep it (new champion) or throw it away, and write the verdict into both ledgers
 
     uv run loop.py run 5     # five more turns (continues from the ledger)
-    uv run loop.py holdout   # score the holdout once, at the end: Jul - Dec 2025
-    uv run loop.py reset     # back to the baseline
-    uv run loop.py build     # build the Docker images (run and holdout do this first anyway)
+    uv run loop.py advance   # by hand, between nights: move the as-of date to the store's newest month
+    uv run loop.py holdout   # score the holdout period once, at the end
+    uv run loop.py reset     # back to the baseline, and to the as-of date the research started under
+    uv run loop.py build     # build the Docker images (run, advance and holdout do this first anyway)
 
 The data comes from the data store (store.py). `uv run scripts/make_data.py` builds it.
+The periods (training, practice, validation, holdout) are counted back from the as-of date,
+the one month in as_of.txt. The judge works them out: see periods() in judge.py.
 """
 import json
 import os
@@ -34,19 +37,26 @@ import store
 ROOT = Path(__file__).parent.resolve()
 LAB, JUDGE, HISTORY = ROOT / "lab", ROOT / "judge", ROOT / "history"
 
+# The as-of date: one line holding one month, the last month the research may use. The judge
+# reads the same file. Only advance() and reset() write it. TOY_AS_OF names a different
+# file; the tests use it to work on a temporary one.
+AS_OF = Path(os.environ.get("TOY_AS_OF") or ROOT / "as_of.txt")
+
 # Two ledgers. The full one holds every score and is never copied into the agent's workspace.
 # The agent's copy is rewritten from it after every turn, without the validation columns: an
 # agent that could read validation scores could pick and combine near-misses by them, which
-# is tuning on the judge's year. Practice scores are safe to show: the agent has that year.
+# is tuning on the judge's period. Practice scores are safe to show: the agent has that period.
+# as_of is the as-of date a row was measured under. Rows with different as-of dates were
+# measured on different months, so their scores can't be compared directly.
 LEDGER = ROOT / "ledger.tsv"
 AGENT_LEDGER = LAB / "ledger.tsv"
-COLUMNS = ["turn", "idea", "practice_champion", "practice", "practice_wins",
+COLUMNS = ["turn", "as_of", "idea", "practice_champion", "practice", "practice_wins",
            "val_mae", "win_pct", "bar_pct", "verdict", "lesson", "reply_check"]
-AGENT_COLUMNS = ["turn", "idea", "practice_champion", "practice", "practice_wins", "verdict", "lesson"]
+AGENT_COLUMNS = ["turn", "as_of", "idea", "practice_champion", "practice", "practice_wins", "verdict", "lesson"]
 TRIED = ("KEPT", "thrown away")  # the verdicts that count as a try, so they raise the bar
 CHAMPIONS = ("start", "KEPT")    # the verdicts whose model became the champion
+ADVANCED = "advanced"            # the verdict of the row an advance adds: the champion, measured again. Not a turn, not a try
 AGENT_FILES = ["program.md", "model.py", "check.py", "practice.py", "ledger.tsv"]
-AGENT_THROUGH = "2024-06"  # the newest month the agent has: the end of the practice period (MONTHS in judge.py and lab/practice.py)
 IMAGES = ["model-sandbox", "agent-sandbox", "agent-proxy"]  # folders in docker/, each built as the Docker image toy-<name>
 NETWORK = "toy-agent-net"  # the agent sandbox's network: its only way out is the proxy
 PROXY = "toy-agent-proxy"  # the proxy's container: squid, which lets through Claude's API alone
@@ -139,16 +149,69 @@ def start_proxy() -> None:
     raise RuntimeError(f"the proxy didn't start; see: docker logs {PROXY}")
 
 
+def as_of() -> str:
+    """Read the as-of date.
+
+    Returns
+    -------
+    str
+        The month in as_of.txt, written as year-month.
+    """
+    return AS_OF.read_text().strip()
+
+
+def periods() -> dict:
+    """Ask the judge for the periods, which it counts back from the as-of date.
+
+    Returns
+    -------
+    dict
+        "as_of", and the months of "training", "practice", "val" and "holdout", oldest
+        first, each written as year-month.
+
+    Raises
+    ------
+    SystemExit
+        If the judge can't work them out: the store doesn't reach the as-of date, or has no
+        month before the practice period.
+    """
+    found = judge("periods")
+    if "error" in found:
+        sys.exit(found["error"])
+    return found
+
+
 def agent_months() -> list[str]:
     """List the months of the data store the agent has.
 
     Returns
     -------
     list[str]
-        Every month in the store up to the end of the practice period, oldest first,
-        written like "2023-01".
+        The training and practice periods: every month in the store up to the end of the
+        practice period, oldest first. A month that arrived after the as-of date is not
+        among them, and no sandbox gets it.
     """
-    return [month for month in store.months() if month <= AGENT_THROUGH]
+    found = periods()
+    return found["training"] + found["practice"]
+
+
+def brief() -> str:
+    """Fill the dates into the brief. lab/program.md is a template: it names no date itself,
+    so it stays right when the as-of date advances.
+
+    Returns
+    -------
+    str
+        The text of lab/program.md with each {name} replaced: the first and last month of
+        the agent's data and of the practice period, and the lengths of the practice and
+        validation periods in months.
+    """
+    found = periods()
+    months = found["training"] + found["practice"]  # the agent's months
+    return (LAB / "program.md").read_text().format(
+        data_first=months[0], data_last=months[-1],
+        practice_first=found["practice"][0], practice_last=found["practice"][-1],
+        practice_months=len(found["practice"]), validation_months=len(found["val"]))
 
 
 def agent_sandbox(work) -> list[str]:
@@ -222,10 +285,22 @@ def ideas_judged() -> int:
     return sum(r["verdict"] in TRIED for r in read_ledger())
 
 
+def last_turn() -> int:
+    """Find the newest turn in the ledger.
+
+    Returns
+    -------
+    int
+        Its number. An advance is not a turn, so its row has no number and is skipped.
+    """
+    return [int(r["turn"]) for r in read_ledger() if r["verdict"] != ADVANCED][-1]
+
+
 def log(turn, idea, verdict, **cells) -> None:
     """Add a row to the full ledger and print it, then rewrite the agent's copy.
-    cells are the row's other columns by name; those left out show as "-"."""
-    cells = {"turn": turn, "idea": idea, "verdict": verdict, **cells}
+    cells are the row's other columns by name; those left out show as "-". Every row records
+    the as-of date it was measured under."""
+    cells = {"turn": turn, "as_of": as_of(), "idea": idea, "verdict": verdict, **cells}
     row = {c: " ".join(str(cells.get(c, "-")).split()) or "-" for c in COLUMNS}  # one line of text per cell, no tabs
     with LEDGER.open("a") as f:
         f.write("\t".join(row.values()) + "\n")
@@ -236,13 +311,15 @@ def log(turn, idea, verdict, **cells) -> None:
 
 def write_agent_ledger() -> None:
     """Rewrite the agent's copy from the full ledger: practice numbers, verdicts and lessons,
-    and no number measured on the validation year. The three comment lines on top say what
+    and no number measured on the validation period. The three comment lines on top say what
     the agent is up against: the champion, the bar the next idea must clear, and the share of
     practice reshuffles an idea needs before it is judged (SUBMIT_PCT)."""
     rows = read_ledger()
     champion = [r for r in rows if r["verdict"] in CHAMPIONS][-1]
+    # the champion's newest practice score: after an advance, the one in the advance's row
+    measured = [r for r in rows if r["verdict"] in (*CHAMPIONS, ADVANCED)][-1]
     bar_pct = judge("bar", ideas_judged() + 1)["bar_pct"]
-    lines = [f"# Champion: turn {champion['turn']}, practice {champion['practice']} MWh",
+    lines = [f"# Champion: turn {champion['turn']}, practice {measured['practice']} MWh",
              f"# Ideas judged: {ideas_judged()}. The next must win {bar_pct}% of the judge's reshuffles.",
              f"# To be judged, an idea must win at least {SUBMIT_PCT}% of the practice reshuffles.",
              "\t".join(AGENT_COLUMNS)]
@@ -250,22 +327,45 @@ def write_agent_ledger() -> None:
     AGENT_LEDGER.write_text("\n".join(lines) + "\n")
 
 
+def champion_scores() -> dict[str, float]:
+    """Measure the champion, lab/model.py, on the practice and validation periods.
+
+    Returns
+    -------
+    dict[str, float]
+        Its average miss in MWh on each: {"practice": ..., "val": ...}.
+
+    Raises
+    ------
+    SystemExit
+        If the judge can't score it on one of them.
+    """
+    scores = {period: judge("score", period, LAB / "model.py") for period in ("practice", "val")}
+    errors = [score["error"] for score in scores.values() if "error" in score]
+    if errors:
+        sys.exit(f"The champion could not be measured: {errors[0]}")
+    return {period: score["mae"] for period, score in scores.items()}
+
+
 def start() -> None:
+    """Start the research from the baseline: save it as turn 0 and write its row, the first,
+    to both ledgers. The baseline is measured before the ledger is made, so if it can't be
+    measured, no half-made ledger is left behind."""
+    scores = champion_scores()  # the baseline is the champion until an idea is kept
     HISTORY.mkdir(exist_ok=True)
     shutil.copy(LAB / "model.py", HISTORY / "turn_0.py")
     LEDGER.write_text("\t".join(COLUMNS) + "\n")
-    log(0, "baseline: average of the last 7 days", "start",
-        practice=judge("score", "practice", LAB / "model.py")["mae"],
-        val_mae=judge("score", "val", LAB / "model.py")["mae"])
+    log(0, "baseline: average of the last 7 days", "start", practice=scores["practice"], val_mae=scores["val"])
 
 
 def turn(t) -> None:
     """One turn of the loop: steps 1-5 at the top of this file."""
-    # 1. copy the lab files into a fresh, empty workspace (a new temp folder)
+    # 1. copy the lab files into a fresh, empty workspace (a new temp folder), the brief with its dates filled in
     champion = LAB / "model.py"
     work = Path(tempfile.mkdtemp(prefix=f"agent-turn{t}-"))
     for name in AGENT_FILES:
         shutil.copy(LAB / name, work / name)
+    (work / "program.md").write_text(brief())
 
     # 2. the agent changes model.py in the agent sandbox, and finishes with a structured reply
     began = time.time()
@@ -312,7 +412,7 @@ def turn(t) -> None:
         log(t, idea, "dropped on practice", **row)
         return
 
-    # 4. the judge compares it with the champion on the validation year; the bar rises with k
+    # 4. the judge compares it with the champion on the validation period; the bar rises with k
     k = 1 + ideas_judged()  # this is the k-th idea tested
     judged = judge("compare", champion, candidate, k)
 
@@ -326,16 +426,65 @@ def turn(t) -> None:
         val_mae=judged["candidate_mae"], win_pct=judged["win_pct"], bar_pct=judged["bar_pct"], **row)
 
 
+def advance() -> None:
+    """Move the as-of date forward to the newest month in the data store, so the months that
+    have arrived since become part of the research. Run it by hand, between nights.
+
+    The four periods move with the as-of date, by whole months: one or many, depending on
+    how long it has been since the last advance. The champion is then measured on the new
+    practice and validation periods, and one `advanced` row in the ledgers records the two
+    scores. That row is not a try. No model changes, no old row is measured again, and
+    nothing is scored on the holdout period.
+
+    Raises
+    ------
+    SystemExit
+        If the store has no month later than the as-of date, or the champion can't be
+        measured. An advance happens whole or not at all: however it is cut short (the
+        judge's error, a timeout, Ctrl-C), the as-of date and both ledgers are put back first.
+    """
+    old, new = as_of(), store.months()[-1]
+    if new <= old:
+        sys.exit(f"Nothing to advance to: the as-of date is {old}, and the data store's newest month is {new}.")
+    if not LEDGER.exists():
+        start()  # as `run` does: the baseline's row records the as-of date the research started under
+    before = {path: path.read_bytes() for path in (AS_OF, LEDGER, AGENT_LEDGER)}  # the three files an advance writes
+    try:
+        AS_OF.write_text(new + "\n")  # first, because the judge reads the as-of date from this file
+        found = periods()
+        scores = champion_scores()
+        print(f"as-of date {old} -> {new}: " + ", ".join(
+            f"{period} {found[period][0]} to {found[period][-1]}" for period in ("training", "practice", "val", "holdout")))
+        champion = [r for r in read_ledger() if r["verdict"] in CHAMPIONS][-1]
+        log("-", f"as-of date advanced from {old} to {new}: the champion (turn {champion['turn']}) measured again", ADVANCED,
+            practice=scores["practice"], val_mae=scores["val"])
+    except BaseException:  # the champion can't be measured, a timeout or Ctrl-C: put all three files back as they were
+        for path, content in before.items():
+            path.write_bytes(content)
+        print(f"Not advanced: the as-of date is still {old}.", file=sys.stderr)
+        raise
+
+
 def holdout() -> None:
-    """Score the baseline and every kept model on the holdout: the 6 months nobody has looked at."""
+    """Score the baseline and every kept model on the holdout period: the newest months, which
+    no decision about any idea has used. Beside it goes the model's validation score, measured
+    now on the current validation period: the val_mae in an old ledger row may come from other months."""
+    found = periods()
+    print(f"as-of date {found['as_of']}: validation is {found['val'][0]} to {found['val'][-1]}, "
+          f"holdout is {found['holdout'][0]} to {found['holdout'][-1]}")
     print(f"{'model':<58}{'val':>6}{'holdout':>9}")
     for r in read_ledger():
         if r["verdict"] in CHAMPIONS:
-            holdout_mae = judge("score", "holdout", HISTORY / f"turn_{r['turn']}.py")["mae"]
-            print(f"{'turn ' + r['turn'] + ': ' + r['idea']:<58.58}{float(r['val_mae']):>6.2f}{holdout_mae:>9.2f}")
+            model = HISTORY / f"turn_{r['turn']}.py"
+            val_mae, holdout_mae = (judge("score", period, model)["mae"] for period in ("val", "holdout"))
+            print(f"{'turn ' + r['turn'] + ': ' + r['idea']:<58.58}{val_mae:>6.2f}{holdout_mae:>9.2f}")
 
 
 def reset() -> None:
+    """Go back to the baseline, and to the as-of date the research started under: the one in
+    the ledger's `start` row. The ledgers and history/ are cleared. The data store is left
+    alone, so months that have arrived stay."""
+    AS_OF.write_text(read_ledger()[0]["as_of"] + "\n")
     shutil.copy(HISTORY / "turn_0.py", LAB / "model.py")
     shutil.rmtree(HISTORY)
     LEDGER.unlink()
@@ -353,9 +502,13 @@ if __name__ == "__main__":
         start_proxy()
         if not LEDGER.exists():
             start()
-        last = int(read_ledger()[-1]["turn"])
+        last = last_turn()
         for t in range(last + 1, last + 1 + int(sys.argv[2] if len(sys.argv) > 2 else 5)):
             turn(t)
+    elif cmd == "advance":
+        store.need()
+        build()
+        advance()
     elif cmd == "holdout":
         store.need()
         build()

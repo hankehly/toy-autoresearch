@@ -7,7 +7,8 @@ It builds a separate data store in the test file's own data folder (see data_fol
 conftest.py, so data/ is never touched): 20 years of days, 2006-01 to 2025-12, with 300
 filler columns of random numbers. As one table that is 7,305 rows by 303 columns, about
 18 MB. Then the real judge scores the baseline on the validation period in the real model
-sandbox, which starts with the 18.5 years before that period.
+sandbox, which starts with the 18.5 years before that period. The as-of date is held at
+2025-12 in a temporary file (see as_of_file in conftest.py).
 
 This is not a gigabyte test. The toy has one row per day, so it cannot reach the size of
 real data. It proves that a wide table gets through every step: the month folders, the

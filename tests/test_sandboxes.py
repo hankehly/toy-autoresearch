@@ -8,6 +8,8 @@ the scored period and no others, and a model's writes to its history don't last.
 The agent sandbox: its only way out is the proxy, which lets through Claude's API alone.
 It has the months up to the end of the practice period, read-only, and none after.
 Only a plain model.py comes back from it, and a run without a login token stops at once.
+The as-of date is held at 2025-12 in a temporary file (see as_of_file in conftest.py), so
+the months and scores expected here stay right after the real one has advanced.
 About 30 seconds.
 """
 import json
@@ -179,9 +181,9 @@ def predict(state, history, today) -> float:
 '''
 
 
-@pytest.mark.parametrize("split, newest", [("practice", 202306), ("val", 202406), ("holdout", 202506)])
-def test_the_model_sandboxs_newest_month_is_the_one_before_the_first_scored_month(split, newest, tmp_path):
-    sandbox = judge.open_model_sandbox(write_model(tmp_path, NAMES_ITS_NEWEST_MONTH), split)
+@pytest.mark.parametrize("period, newest", [("practice", 202306), ("val", 202406), ("holdout", 202506)])
+def test_the_model_sandboxs_newest_month_is_the_one_before_the_first_scored_month(period, newest, tmp_path):
+    sandbox = judge.open_model_sandbox(write_model(tmp_path, NAMES_ITS_NEWEST_MONTH), period)
     guess = judge.request(sandbox, {"op": "predict", "today": {"date": "2000-01-01"}})["guess"]
     sandbox.stdin.close()
     sandbox.wait()
