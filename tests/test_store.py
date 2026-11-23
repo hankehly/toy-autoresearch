@@ -4,7 +4,8 @@ through ingest. Run it from the repo root:
     uv run tests/test_store.py
 
 Everything here happens in a temporary data folder (TOY_DATA points the store there), so
-data/ is never touched. The scores come from the real judge and the real model sandbox.
+data/ is never touched. The scores come from the real judge and the real model sandbox, with
+the as-of date held at 2025-12 in a temporary file (TOY_AS_OF).
 Prints PASS or FAIL for each check, and exits with 1 if any check failed (about 30 seconds).
 """
 import hashlib
@@ -21,6 +22,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 TMP = Path(tempfile.mkdtemp(prefix="test-store-"))
 os.environ["TOY_DATA"] = str(TMP / "data")  # set before store is imported; the scripts and the judge started below follow it too
+os.environ["TOY_AS_OF"] = str(TMP / "as_of.txt")  # the checks below expect the periods of this as-of date, whatever as_of.txt says today
+(TMP / "as_of.txt").write_text("2025-12\n")
 sys.path.insert(0, str(ROOT))
 import loop  # noqa: E402  (imported after the path is set: these files live in the repo root, not here)
 import store  # noqa: E402
@@ -106,7 +109,7 @@ def predict(state, history, today) -> float:
 
 # --- No store yet: the judge and the loop say how to make one -------------------------------
 
-for command in (["judge/judge.py", "score", "val", str(baseline)], ["loop.py", "run", "1"], ["loop.py", "holdout"]):
+for command in (["judge/judge.py", "score", "val", str(baseline)], ["loop.py", "run", "1"], ["loop.py", "holdout"], ["loop.py", "advance"]):
     stopped = run(*command)
     check(f"without a store, {' '.join(command[:2])} stops with one line that says to run make_data.py",
           stopped.returncode != 0 and stopped.stdout == "" and len(stopped.stderr.strip().splitlines()) == 1
@@ -180,7 +183,7 @@ check("ingest touches nothing else: the future is as it was, and the data folder
 run("scripts/ingest.py", "--through", "2026-03")
 check("ingest with an older month adds nothing and removes nothing", file_bytes(store.STORE) == store_after)
 
-check("after ingest, the judge's scores are the same: nothing reads the new months yet",
+check("after ingest, the judge's scores are the same: months that arrive move no period until the as-of date advances",
       val_scores() == KNOWN_SCORES, val_scores())
 
 

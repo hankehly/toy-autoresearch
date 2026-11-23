@@ -6,19 +6,25 @@ model.py and the month folders before the first scored month, read-only. The jud
 messages, one line of JSON at a time, and reveals each day's actual load only after the
 model has sent back its guess for that day.
 
-    uv run judge/judge.py score val     lab/model.py           # validation, Jul 2024 - Jun 2025: what the agent is graded on
-    uv run judge/judge.py score holdout lab/model.py           # holdout, Jul - Dec 2025: scored once, at the end
+    uv run judge/judge.py score val     lab/model.py           # the validation period: what the agent is graded on
+    uv run judge/judge.py score holdout lab/model.py           # the holdout period: scored once, at the end
     uv run judge/judge.py compare champion.py candidate.py 12  # keep or throw away the 12th idea tested (validation only)
-    uv run judge/judge.py practice champion.py candidate.py    # the same comparison on the practice year, with no bar
+    uv run judge/judge.py practice champion.py candidate.py    # the same comparison on the practice period, with no bar
     uv run judge/judge.py bar 12                               # the share of reshuffles the 12th idea tested must win
+    uv run judge/judge.py periods                              # the as-of date and the months of each period
 
-The practice year (Jul 2023 - Jun 2024) is the agent's own: it has those months of the data
-store and scores itself there with lab/practice.py. The loop asks the judge for the same
-numbers, so the ledger records a measurement the agent can't touch.
+No period is written down as dates. as_of.txt, in the repo root, holds one month: the as-of
+date, the last month the research may use. periods() counts the holdout, validation and
+practice periods back from it, and they stay put until `loop.py advance` moves the as-of date.
+
+The practice period is the agent's own: it has those months of the data store and scores
+itself there with lab/practice.py. The loop asks the judge for the same numbers, so the
+ledger records a measurement the agent can't touch.
 
 The data comes from the data store (store.py). `uv run scripts/make_data.py` builds it.
 """
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -29,13 +35,19 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import store  # noqa: E402  (imported after the path is set: store.py lives in the repo root, not here)
 
-# TODO: Static date ranges. What to do as time passes and new data added?
-MONTHS = {
-    "practice": pd.date_range("2023-07-01", "2024-06-01", freq="MS"),  # the agent's own year: it has these answers
-    "val": pd.date_range("2024-07-01", "2025-06-01", freq="MS"),      # validation: decides what's kept
-    "holdout": pd.date_range("2025-07-01", "2025-12-01", freq="MS"),  # holdout: scored once, at the end
-}
-WEEKS = 52           # a scored year in 7-day blocks (the last block has 8 days; 9 in the practice year, which has a leap day)
+# The as-of date: one line holding one month. Only `loop.py advance` and `loop.py reset`
+# write it. TOY_AS_OF names a different file; the tests use it to work on a temporary one.
+AS_OF = Path(os.environ.get("TOY_AS_OF") or Path(__file__).resolve().parent.parent / "as_of.txt")
+
+# How long each period is, in months. periods() counts them back from the as-of date.
+HOLDOUT_MONTHS = 6      # the newest months: scored once, at the end
+VALIDATION_MONTHS = 12  # the months before those: they decide what's kept
+PRACTICE_MONTHS = 12    # the months before those: the agent's own, it has these answers
+# Every earlier month in the store is the training period.
+
+# A scored period in 7-day blocks. Any 12 months are 365 or 366 days, which is 51 blocks of
+# 7 days and a last block of 8 or 9. Change it together with VALIDATION_MONTHS and PRACTICE_MONTHS.
+WEEKS = 52
 RESHUFFLES = 10_000  # how many times we re-deal the weeks
 
 # TODO: Where does this threshold come from? Was it used by a related project?
@@ -43,6 +55,37 @@ FLUKE_BUDGET = 0.05  # the k-th idea tested must win at least 1 - 5%/k of the re
 
 
 CRASHED = "model.py crashed or ran out of time (its error, if any, is printed above)"
+
+
+def periods() -> dict[str, list[str]]:
+    """Work out the four periods by counting back from the as-of date.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        The months of "training", "practice", "val" and "holdout", oldest first, each
+        written as year-month. The holdout period ends at the as-of date, the validation
+        period ends where the holdout period starts, the practice period ends where the
+        validation period starts, and the training period is every earlier month in the store.
+
+    Raises
+    ------
+    SystemExit
+        If the store does not reach the as-of date, or has no month before the practice period.
+    """
+    as_of = pd.Period(AS_OF.read_text().strip(), "M")
+    found, last = {}, as_of
+    for name, length in [("holdout", HOLDOUT_MONTHS), ("val", VALIDATION_MONTHS), ("practice", PRACTICE_MONTHS)]:
+        found[name] = [str(month) for month in pd.period_range(end=last, periods=length, freq="M")]
+        last -= length  # the next period back ends just before this one starts
+    stored = store.months()
+    found["training"] = [month for month in stored if month < found["practice"][0]]
+    if stored[-1] < str(as_of):
+        sys.exit(f"The data store ends at {stored[-1]}, before the as-of date, {as_of}.")
+    if not found["training"]:
+        sys.exit(f"The data store has no month before the practice period, {found['practice'][0]} to "
+                 f"{found['practice'][-1]}, so a model would have nothing to learn from. The as-of date is {as_of}.")
+    return {name: found[name] for name in ("training", "practice", "val", "holdout")}  # oldest period first
 
 
 def open_model_sandbox(model_path, split) -> subprocess.Popen:
@@ -62,7 +105,7 @@ def open_model_sandbox(model_path, split) -> subprocess.Popen:
     subprocess.Popen
         The running sandbox. The judge talks to it through stdin and stdout.
     """
-    first_scored = f"{MONTHS[split][0]:%Y-%m}"
+    first_scored = periods()[split][0]
     return subprocess.Popen([
         "docker", "run", "--rm", "-i", "--pull", "never",
         "--network", "none",                                          # no internet
@@ -108,9 +151,9 @@ def daily_misses(model_path, split) -> np.ndarray:
     judge reads only the scored months, one at a time."""
     sandbox = open_model_sandbox(model_path, split)
     misses = []
-    for month in MONTHS[split]:
+    for month in periods()[split]:
         request(sandbox, {"op": "fit"})
-        for day in as_rows(store.read([f"{month:%Y-%m}"])):
+        for day in as_rows(store.read([month])):
             today = {column: value for column, value in day.items() if column != "load"}
             guess = float(request(sandbox, {"op": "predict", "today": today})["guess"])
             if not np.isfinite(guess):
@@ -123,7 +166,7 @@ def daily_misses(model_path, split) -> np.ndarray:
 
 
 def win_share(old, new) -> float:
-    """Re-deal the year's 52 weeks 10,000 times (some weeks twice, some not at all) and return
+    """Re-deal the period's 52 weeks 10,000 times (some weeks twice, some not at all) and return
     the share of re-deals in which the new model's average miss is the lower one.
     Whole weeks move together because neighbouring days share weather.
     lab/practice.py carries a copy of this function. Change them together."""
@@ -142,7 +185,7 @@ def bar(k) -> float:
 
 
 def compare(champion_path, candidate_path, k) -> dict:
-    """The verdict on the validation year. The k-th idea tested is kept only if its average
+    """The verdict on the validation period. The k-th idea tested is kept only if its average
     miss is lower in at least bar(k) of the re-deals."""
     old = daily_misses(champion_path, "val")
     new = daily_misses(candidate_path, "val")
@@ -157,7 +200,7 @@ def compare(champion_path, candidate_path, k) -> dict:
 
 
 def practice(champion_path, candidate_path) -> dict:
-    """The same comparison on the practice year, with no bar and no verdict. The loop logs
+    """The same comparison on the practice period, with no bar and no verdict. The loop logs
     these numbers, so the ledger never depends on the ones the agent reports."""
     old = daily_misses(champion_path, "practice")
     new = daily_misses(candidate_path, "practice")
@@ -179,3 +222,5 @@ if __name__ == "__main__":
         print(json.dumps(practice(sys.argv[2], sys.argv[3])))
     elif sys.argv[1] == "bar":
         print(json.dumps({"bar_pct": round(100 * bar(int(sys.argv[2])), 2)}))
+    elif sys.argv[1] == "periods":
+        print(json.dumps({"as_of": AS_OF.read_text().strip(), **periods()}))

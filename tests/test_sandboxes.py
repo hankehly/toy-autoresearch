@@ -8,6 +8,8 @@ the scored period and no others, and a model's writes to its history don't last.
 The agent sandbox: its only way out is the proxy, which lets through Claude's API alone.
 It has the months up to the end of the practice period, read-only, and none after.
 Only a plain model.py comes back from it, and a run without a login token stops at once.
+The as-of date is held at 2025-12 in a temporary file (TOY_AS_OF), so the months and scores
+expected here stay right after the real one has advanced.
 Prints PASS or FAIL for each check, and exits with 1 if any check failed.
 """
 import json
@@ -19,6 +21,9 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+TMP = Path(tempfile.mkdtemp(prefix="test-sandboxes-"))
+os.environ["TOY_AS_OF"] = str(TMP / "as_of.txt")  # set before judge and loop are imported. The checks below expect the periods of this as-of date, whatever as_of.txt says today
+(TMP / "as_of.txt").write_text("2025-12\n")
 sys.path[:0] = [str(ROOT), str(ROOT / "judge")]
 import judge  # noqa: E402  (imported after the path is set: these files live in the repo, not here)
 import loop  # noqa: E402
@@ -27,7 +32,6 @@ import store  # noqa: E402
 store.need()  # the judge reads the data store
 
 loop.build()  # test the sandboxes as the current files describe them
-TMP = Path(tempfile.mkdtemp(prefix="test-sandboxes-"))
 failures = 0
 
 
@@ -46,7 +50,7 @@ def write_model(name, code) -> Path:
 
 
 def val_score(model_path) -> float | Exception:
-    """The model's average miss on the validation year, or the error that stopped it."""
+    """The model's average miss on the validation period, or the error that stopped it."""
     try:
         return round(float(judge.daily_misses(model_path, "val").mean()), 3)
     except Exception as error:
