@@ -327,13 +327,35 @@ def write_agent_ledger() -> None:
     AGENT_LEDGER.write_text("\n".join(lines) + "\n")
 
 
+def champion_scores() -> dict[str, float]:
+    """Measure the champion, lab/model.py, on the practice and validation periods.
+
+    Returns
+    -------
+    dict[str, float]
+        Its average miss in MWh on each: {"practice": ..., "val": ...}.
+
+    Raises
+    ------
+    SystemExit
+        If the judge can't score it on one of them.
+    """
+    scores = {period: judge("score", period, LAB / "model.py") for period in ("practice", "val")}
+    errors = [score["error"] for score in scores.values() if "error" in score]
+    if errors:
+        sys.exit(f"The champion could not be measured: {errors[0]}")
+    return {period: score["mae"] for period, score in scores.items()}
+
+
 def start() -> None:
+    """Start the research from the baseline: save it as turn 0 and write its row, the first,
+    to both ledgers. The baseline is measured before the ledger is made, so if it can't be
+    measured, no half-made ledger is left behind."""
+    scores = champion_scores()  # the baseline is the champion until an idea is kept
     HISTORY.mkdir(exist_ok=True)
     shutil.copy(LAB / "model.py", HISTORY / "turn_0.py")
     LEDGER.write_text("\t".join(COLUMNS) + "\n")
-    log(0, "baseline: average of the last 7 days", "start",
-        practice=judge("score", "practice", LAB / "model.py")["mae"],
-        val_mae=judge("score", "val", LAB / "model.py")["mae"])
+    log(0, "baseline: average of the last 7 days", "start", practice=scores["practice"], val_mae=scores["val"])
 
 
 def turn(t) -> None:
@@ -430,18 +452,16 @@ def advance() -> None:
     try:
         AS_OF.write_text(new + "\n")  # first, because the judge reads the as-of date from this file
         found = periods()
-        scores = {period: judge("score", period, LAB / "model.py") for period in ("practice", "val")}
-        errors = [score["error"] for score in scores.values() if "error" in score]
-        if errors:
-            sys.exit(f"Not advanced, the as-of date is still {old}. The champion could not be measured: {errors[0]}")
+        scores = champion_scores()
         print(f"as-of date {old} -> {new}: " + ", ".join(
             f"{period} {found[period][0]} to {found[period][-1]}" for period in ("training", "practice", "val", "holdout")))
         champion = [r for r in read_ledger() if r["verdict"] in CHAMPIONS][-1]
         log("-", f"as-of date advanced from {old} to {new}: the champion (turn {champion['turn']}) measured again", ADVANCED,
-            practice=scores["practice"]["mae"], val_mae=scores["val"]["mae"])
-    except BaseException:  # the judge's error above, a timeout or Ctrl-C: put all three files back as they were
+            practice=scores["practice"], val_mae=scores["val"])
+    except BaseException:  # the champion can't be measured, a timeout or Ctrl-C: put all three files back as they were
         for path, content in before.items():
             path.write_bytes(content)
+        print(f"Not advanced: the as-of date is still {old}.", file=sys.stderr)
         raise
 
 
