@@ -420,7 +420,7 @@ rows_before = loop.read_ledger()
 (loop.LAB / "model.py").write_text(CRASHES)
 stopped = stops(loop.advance)
 check("an advance that can't measure the champion stops, and leaves the as-of date and the ledger as they were",
-      "Not advanced" in stopped and AS_OF.read_text() == "2025-12\n" and loop.read_ledger() == rows_before, stopped or AS_OF.read_text())
+      "could not be measured" in stopped and AS_OF.read_text() == "2025-12\n" and loop.read_ledger() == rows_before, stopped or AS_OF.read_text())
 (loop.LAB / "model.py").write_text(REGRESSION)
 
 
@@ -544,7 +544,15 @@ check("reset: the baseline is back, and the ledgers and history are cleared",
       (loop.LAB / "model.py").read_text() == BASELINE and not loop.LEDGER.exists() and not loop.AGENT_LEDGER.exists() and not loop.HISTORY.exists())
 
 # With no ledger yet, an advance starts one first, as `run` does, so the start row still
-# records the as-of date the research started under.
+# records the as-of date the research started under. The baseline is measured before the
+# ledger is made, so a baseline that can't be measured leaves nothing half made.
+(loop.LAB / "model.py").write_text(CRASHES)
+stopped = stops(loop.advance)
+check("advance with no ledger and a baseline that can't be measured: it stops, and no ledger is left behind",
+      "could not be measured" in stopped and not loop.LEDGER.exists() and not loop.AGENT_LEDGER.exists()
+      and AS_OF.read_text() == "2025-12\n", stopped or f"ledger exists: {loop.LEDGER.exists()}")
+(loop.LAB / "model.py").write_text(BASELINE)
+
 stopped = stops(loop.advance)
 rows = loop.read_ledger()
 check("advance with no ledger: the baseline's start row is measured under 2025-12, then the advanced row under 2026-07",
