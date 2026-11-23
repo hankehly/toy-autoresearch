@@ -283,7 +283,7 @@ def seen(toy_store, tmp_path_factory) -> dict:
     loop.start_proxy()  # a proxy left over from an earlier run is replaced, not tripped over
 
     work = tmp_path_factory.mktemp("agent-workspace")
-    probe = subprocess.run(loop.agent_sandbox(work) + ["python", "-c", PROBE, str(ROOT)], capture_output=True, text=True)
+    probe = subprocess.run([*loop.agent_sandbox(work), "python", "-c", PROBE, str(ROOT)], capture_output=True, text=True)
     assert probe.returncode == 0, probe.stderr[-300:]
     return json.loads(probe.stdout)
 

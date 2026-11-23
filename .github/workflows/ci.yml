@@ -1,6 +1,6 @@
-# Runs every test on GitHub: on each pull request, and on each push to main.
-# The tests are one command, the one you run on your Mac (`uv run pytest`) plus --locked.
-# It needs Docker, which GitHub's Linux machines have, and no login token, so this repo
+# Runs every test and every code check on GitHub: on each pull request, and on each push to
+# main. Each is a command you can run on your Mac too, here with --locked added.
+# The tests need Docker, which GitHub's Linux machines have, and no login token, so this repo
 # stores no secret.
 name: CI
 
@@ -20,3 +20,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.4.0  # uv installs Python 3.12 and the locked packages on the first `uv run`
       - run: uv run --locked pytest  # --locked: stop if uv.lock no longer matches pyproject.toml, rather than quietly picking new versions
+
+  checks:  # they read the code without running it, so they take seconds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+      - run: uv run --locked ruff check  # likely mistakes, and the style rules in CLAUDE.md (the rule list is in pyproject.toml)

@@ -26,8 +26,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import store  # noqa: E402  (imported after the path is set: store.py lives in the repo root, not here)
-from ingest import as_month, ingest  # noqa: E402
+import store  # imported after the path is set: store.py lives in the repo root, not here
+from ingest import as_month, ingest
 
 STORE_THROUGH = "2025-12"  # the store's newest month on a fresh checkout. The pretend future runs on to 2042-12
 

@@ -20,8 +20,38 @@ dependencies = [
 dev = [
     # Runs the tests: `uv run pytest`.
     "pytest>=9.2.0",
+    "ruff>=0.17.6",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]        # `uv run pytest` runs every test in tests/
 pythonpath = [".", "judge"]  # so a test file can `import loop`, `import store` and `import judge`
+
+[tool.ruff]
+line-length = 100
+# Code the agent wrote, not a human: the champion and every turn's model. The agent's code
+# is judged on its score, not its style, so a kept idea must never fail a style check.
+extend-exclude = ["lab/model.py", "history"]
+# The folders whose files import each other by bare name (`import store`, `import model`).
+src = [".", "judge", "lab", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "F", "E4", "E7", "E9",  # mistakes: unused imports, undefined names, broken syntax
+    "B", "PLE", "PLW",      # likely bugs
+    "SIM", "C4", "RUF",     # simpler ways to write the same thing
+    "PD", "NPY",            # pandas and numpy habits that are out of date
+    "I",                    # imports in one order
+    "UP",                   # `list` not `List`, `X | None` not `Optional[X]`
+    "ANN2",                 # a return type on every function
+]
+ignore = [
+    # `subprocess.run` without `check=`: the loop and the tests read the return code themselves.
+    "PLW1510",
+    # `dict(turn=turn, kept=kept)`: with many keys it reads more easily than the same in braces.
+    "C408",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# A test's name says what it checks, and it returns nothing.
+"tests/*" = ["ANN"]

@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import store  # noqa: E402  (imported after the path is set: store.py lives in the repo root, not here)
+import store  # imported after the path is set: store.py lives in the repo root, not here
 
 # The as-of date: one line holding one month. Only `loop.py advance` and `loop.py reset`
 # write it. TOY_AS_OF names a different file; the tests use it to work on a temporary one.

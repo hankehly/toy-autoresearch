@@ -313,7 +313,7 @@ def reply(practice, submit, idea="an idea worth trying", lesson="What this turn 
     (champion_mae, model_mae, wins_pct) it says practice.py printed, or None."""
     names = ("champion_mae", "model_mae", "wins_pct")
     return {"idea": idea, "lesson": lesson, "submit": submit,
-            "practice": dict(zip(names, practice)) if practice else None}
+            "practice": dict(zip(names, practice, strict=True)) if practice else None}
 
 
 MISSING = "delete model.py"  # in TURNS: the stand-in agent leaves no model.py behind

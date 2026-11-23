@@ -98,8 +98,12 @@ def run_month(p, town, F, cF, h0, s, e) -> np.ndarray:
         w = p["win"]
         off = dow_offsets(town, h0, s) if p["dow"] else np.zeros(7)
         i = np.arange(h0 + w, s)
-        level = lambda k: (town.cy[k] - town.cy[k - w]) / w - ((town.cD[k] - town.cD[k - w]) / w) @ off
-        change = lambda k: F[k] - (cF[k] - cF[k - w]) / w
+        def level(k: np.ndarray) -> np.ndarray:
+            return (town.cy[k] - town.cy[k - w]) / w - ((town.cD[k] - town.cD[k - w]) / w) @ off
+
+        def change(k: np.ndarray) -> np.ndarray:
+            return F[k] - (cF[k] - cF[k - w]) / w
+
         X, target = change(i), town.y[i] - off[DOW[i]] - level(i)
         coef = np.linalg.lstsq(X, target, rcond=None)[0] if len(i) > 30 else np.zeros(F.shape[1])
         used = coef.copy()
@@ -108,8 +112,10 @@ def run_month(p, town, F, cF, h0, s, e) -> np.ndarray:
         resid = target - X @ coef
     else:  # absolute: load straight from temperature, weekday and any extra inputs
         i = np.arange(h0, s)
-        design = lambda k: np.column_stack(
-            [np.ones(len(k)), F[k]] + ([np.eye(7)[DOW[k]][:, 1:]] if p["dow"] else []))
+        def design(k: np.ndarray) -> np.ndarray:
+            return np.column_stack(
+                [np.ones(len(k)), F[k]] + ([np.eye(7)[DOW[k]][:, 1:]] if p["dow"] else []))
+
         Z = design(i)
         coef = np.linalg.lstsq(Z, town.y[i], rcond=None)[0]
         used = coef.copy()

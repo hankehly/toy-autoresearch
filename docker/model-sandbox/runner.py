@@ -22,7 +22,7 @@ pd.options.mode.copy_on_write = True
 to_judge = sys.stdout
 sys.stdout = sys.stderr  # anything model.py prints goes to the log, never to the judge
 
-import model  # imported only now, so even its prints at import time go to the log
+import model  # noqa: E402  (imported only now, so even its prints at import time go to the log)
 
 files = sorted(Path("/data").glob("month=*/part.parquet"))  # one file per month, oldest first
 past = pd.concat([pd.read_parquet(file) for file in files], ignore_index=True)  # every day so far, as one table

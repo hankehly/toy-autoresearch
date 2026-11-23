@@ -277,7 +277,8 @@ def judge(*args) -> dict:
 def read_ledger() -> list[dict[str, str]]:
     """The rows of the full ledger."""
     rows = LEDGER.read_text().strip().splitlines()[1:]
-    return [dict(zip(COLUMNS, r.split("\t"))) for r in rows]
+    # strict=False: a row whose last cells are empty has fewer cells than there are columns
+    return [dict(zip(COLUMNS, r.split("\t"), strict=False)) for r in rows]
 
 
 def ideas_judged() -> int:

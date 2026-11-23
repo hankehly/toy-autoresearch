@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import store  # noqa: E402  (imported after the path is set: store.py lives in the repo root, not here)
+import store  # imported after the path is set: store.py lives in the repo root, not here
 
 
 def as_month(text) -> str:
