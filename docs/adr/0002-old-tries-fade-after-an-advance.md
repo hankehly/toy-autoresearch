@@ -27,3 +27,15 @@ next idea must win 99.40% of reshuffles instead of 99.44%.
 - The try count is no longer a whole number.
 - This rule is our own, not one taken from the published work in `docs/research.md`. It is
   checked by simulation in `scripts/night_sim.py`, which mirrors the judge's rules.
+- The check (2026-11-23, `uv run scripts/night_sim.py advance`; CLAUDE.md, finding 8): 300
+  ideas over 12 nights a month apart, 30 runs. Letting tries fade kept 0.03 to 0.10 lucky
+  ideas per run, about as many as keeping the count (0.03 to 0.10). Resetting the count
+  kept 0.43 to 0.60.
+- In the first year the rule is close to keeping the count, because new tries arrive faster
+  than old ones fade: after 300 ideas the bar is 99.95% against 99.98%. The two part later.
+  At a steady pace the fading count levels off, where a kept count grows for good, and when
+  the research pauses the fading bar comes back down.
+- An idea thrown away under an older as-of date may be tried again as it was (rule 2 of the
+  brief, decided 2026-11-23). The retry is a try like any other. In the same simulation a
+  retry was about as likely to be a lucky keep as a new idea: over 200 runs, retries were
+  27% of the turns and 10 of the 41 lucky keeps.
