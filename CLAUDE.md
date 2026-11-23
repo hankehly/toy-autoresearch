@@ -160,9 +160,28 @@ The lessons are meant to carry over to real problems like these.
 - `tests/` holds the tests, which run with pytest. One command from the repo root runs them all:
   `uv run pytest` (about 3 minutes; Docker running, no token, no `make_data.py` first). One file:
   `uv run pytest tests/test_store.py`. Tests by name: `uv run pytest -k proxy`. `tests/conftest.py`
-  holds what the five test files share.
-- GitHub runs `uv run pytest` on every pull request and every push to `main`
-  (`.github/workflows/ci.yml`). It needs no secret.
+  holds what the test files share.
+- GitHub runs the tests and the code checks on every pull request and every push to `main`
+  (`.github/workflows/ci.yml`: the `pytest` job and the `checks` job). It needs no secret.
+- Code checks read the code without running it. Before a commit, run the first three; the
+  `checks` job runs all but the last, and that one runs by itself.
+
+  | Check | Command | What it stops |
+  |---|---|---|
+  | Ruff lint | `uv run ruff check` (add `--fix` to repair what it can) | Likely mistakes; a function with no return type or no docstring |
+  | Ruff format | `uv run ruff format` | Any layout but the formatter's, 100 characters wide |
+  | Pyright | `uv run pyright` | A value used as the wrong type, such as one that may be None |
+  | zizmor, actionlint | In `ci.yml` | Unsafe settings and mistakes in the workflow file |
+  | hadolint | In `ci.yml` | Common Dockerfile mistakes |
+  | Pin test | `uv run pytest tests/test_pins.py` | numpy, pandas or pyarrow differing between `pyproject.toml` and a sandbox Dockerfile |
+  | gitleaks | By itself before each commit, after `uv run pre-commit install` once per checkout | A commit that holds a secret, such as the token in `.env` |
+
+  The rules, and each rule left out with its reason, are in `pyproject.toml` (`[tool.ruff]`,
+  `[tool.pyright]`), `.hadolint.yaml` and `.gitleaks.toml`. Ruff and pyright skip
+  `lab/model.py` and `history/`: the agent writes those, and a kept idea must never fail a
+  style check. Three docker argument lists sit between `# fmt: off` and `# fmt: on`, so each
+  setting keeps its reason beside it. The actions in `ci.yml` are pinned to commit hashes:
+  to update one, change the hash and the version in the comment beside it.
 - Docker Desktop must be running. `uv run loop.py build` builds the three images (`run`,
   `advance` and `holdout` do it first anyway); `uv run pytest tests/test_sandboxes.py` checks the isolation
   (about 30 s).

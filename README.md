@@ -44,7 +44,9 @@ The smallest working version of an agent research loop, with guards against over
                 test_store.py      proves the store holds the same days as ever, and that only
                                    ingest.py adds months (about 30 seconds)
                 test_size.py       scores a 20-year, 303-column store (about 30 seconds)
-    .github/    GitHub runs `uv run pytest` on every pull request and every push to main
+                test_pins.py       proves the Mac and both sandboxes install the same numpy,
+                                   pandas and pyarrow (under a second)
+    .github/    GitHub runs the tests and the code checks on every pull request and every push to main
     docs/       the diagrams below, and adr/: why the periods stay fixed between advances
 
 ## One turn of the loop
@@ -100,6 +102,7 @@ Needs Docker Desktop (running), Claude Code and [uv](https://docs.astral.sh/uv/)
     uv run loop.py build              # build the Docker images (run, advance and holdout also do this first)
     uv run pytest                     # run every test (about 3 minutes; no login token, and data/ is not touched)
     uv run pytest -k proxy            # or only the tests with "proxy" in their names
+    uv run pre-commit install         # once: before each commit, stop it if it holds a secret (see Code checks)
     claude setup-token                # once: a login token the agent sandbox can use
     export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>
     uv run loop.py run 5              # five agent turns
@@ -111,6 +114,27 @@ Needs Docker Desktop (running), Claude Code and [uv](https://docs.astral.sh/uv/)
 
 The ledgers and history/ in this folder are from the example run below (agent: Claude Sonnet
 via `claude -p`; change the model in loop.py). `uv run loop.py reset` clears them.
+
+## Code checks
+
+The tests run the code. These checks only read it, so they take seconds. GitHub runs them on
+every pull request, next to the tests; the rule lists are in `pyproject.toml`.
+
+| Check | Command | What it stops |
+|---|---|---|
+| Ruff lint | `uv run ruff check` (add `--fix` to repair what it can) | Likely mistakes, such as an unused import; a function with no return type or no docstring |
+| Ruff format | `uv run ruff format` | Any layout but the formatter's, 100 characters wide |
+| Pyright | `uv run pyright` | A value used as the wrong type, such as one that may be None |
+| zizmor and actionlint | In `.github/workflows/ci.yml` | Unsafe settings and mistakes in the workflow file |
+| hadolint | In `.github/workflows/ci.yml` | Common Dockerfile mistakes |
+| gitleaks | By itself, before each commit | A commit that holds a secret, such as the login token in `.env` |
+
+Ruff and pyright skip `lab/model.py` and `history/`. The agent writes those files, and its
+ideas are judged on their scores alone.
+
+Gitleaks is the one check that runs on your Mac only, because a secret must be stopped before
+it leaves. Git doesn't share hooks between checkouts, so `uv run pre-commit install` switches
+it on once in each fresh checkout.
 
 ## The example run (average miss per day, MWh; lower is better)
 
