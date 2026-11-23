@@ -144,11 +144,13 @@ def as_rows(days) -> list[dict]:
 
 def daily_misses(model_path, period) -> np.ndarray:
     """Walk forward one month at a time, like real life.
+
     fit() learns from every day before the month. predict() sees every day before today,
     plus every column of today except its load. Each day's load is revealed only after the
     model has guessed it.
     The sandbox starts with the months before the first scored one already in it, so the
-    judge reads only the scored months, one at a time."""
+    judge reads only the scored months, one at a time.
+    """
     sandbox = open_model_sandbox(model_path, period)
     misses = []
     for month in periods()[period]:
@@ -166,10 +168,13 @@ def daily_misses(model_path, period) -> np.ndarray:
 
 
 def win_share(old, new) -> float:
-    """Re-deal the period's 52 weeks 10,000 times (some weeks twice, some not at all) and return
-    the share of re-deals in which the new model's average miss is the lower one.
+    """Re-deal the period's 52 weeks 10,000 times and return the share the new model wins.
+
+    A re-deal draws 52 weeks, some twice and some not at all. The new model wins a re-deal
+    when its average miss is the lower one.
     Whole weeks move together because neighbouring days share weather.
-    lab/practice.py carries a copy of this function. Change them together."""
+    lab/practice.py carries a copy of this function. Change them together.
+    """
     week = np.minimum(np.arange(len(old)) // 7, WEEKS - 1)
     gaps = np.bincount(week, weights=new - old, minlength=WEEKS)
     days = np.bincount(week, minlength=WEEKS)
@@ -178,15 +183,20 @@ def win_share(old, new) -> float:
 
 
 def bar(k) -> float:
-    """The share of re-deals the k-th idea tested must win: 1 - 5%/k, so 95% for the 1st,
-    99.5% for the 10th, 99.95% for the 100th.
-    Over a whole night, that keeps the expected number of lucky keeps under one."""
+    """The share of re-deals the k-th idea tested must win: 1 - 5%/k.
+
+    That is 95% for the 1st, 99.5% for the 10th, 99.95% for the 100th.
+    Over a whole night, that keeps the expected number of lucky keeps under one.
+    """
     return 1 - FLUKE_BUDGET / k
 
 
 def compare(champion_path, candidate_path, k) -> dict:
-    """The verdict on the validation period. The k-th idea tested is kept only if its average
-    miss is lower in at least bar(k) of the re-deals."""
+    """The verdict on the validation period.
+
+    The k-th idea tested is kept only if its average miss is lower in at least bar(k) of the
+    re-deals.
+    """
     old = daily_misses(champion_path, "val")
     new = daily_misses(candidate_path, "val")
     share = win_share(old, new)
@@ -200,8 +210,10 @@ def compare(champion_path, candidate_path, k) -> dict:
 
 
 def practice(champion_path, candidate_path) -> dict:
-    """The same comparison on the practice period, with no bar and no verdict. The loop logs
-    these numbers, so the ledger never depends on the ones the agent reports."""
+    """The same comparison on the practice period, with no bar and no verdict.
+
+    The loop logs these numbers, so the ledger never depends on the ones the agent reports.
+    """
     old = daily_misses(champion_path, "practice")
     new = daily_misses(candidate_path, "practice")
     return {

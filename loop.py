@@ -1,4 +1,6 @@
-"""The research loop. Each turn:
+"""The research loop.
+
+Each turn:
   1. copy lab/ into a fresh, empty workspace, with the dates filled into program.md
   2. a fresh Claude Code session reads program.md + ledger.tsv and changes model.py. It works
      in the agent sandbox: a container that sees only that workspace and the months of the
@@ -121,7 +123,9 @@ def build() -> None:
 
 def need_login_token() -> None:
     """Stop with instructions if there's no login token to pass into the agent sandbox.
-    (Your Mac keeps its own Claude login in the Keychain, which a container can't use.)"""
+
+    (Your Mac keeps its own Claude login in the Keychain, which a container can't use.)
+    """
     if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
         sys.exit("The agent sandbox needs a Claude login token. In your shell, run:\n"
                  "    claude setup-token\n"
@@ -130,10 +134,14 @@ def need_login_token() -> None:
 
 
 def start_proxy() -> None:
-    """Start the proxy: the only way out of the agent sandbox's network, and it leads to
-    Claude's API alone. It keeps running after a run, and its log lists every request the
-    agent sent through it (the next run or test starts a fresh proxy, with an empty log):
-        docker exec toy-agent-proxy cat /var/log/squid/access.log"""
+    """Start the proxy: the only way out of the agent sandbox's network.
+
+    It leads to Claude's API alone. It keeps running after a run, and its log lists every
+    request the agent sent through it (the next run or test starts a fresh proxy, with an
+    empty log)::
+
+        docker exec toy-agent-proxy cat /var/log/squid/access.log
+    """
     subprocess.run(["docker", "rm", "--force", PROXY], capture_output=True)  # remove an old proxy, if any
     subprocess.run(["docker", "network", "rm", NETWORK], capture_output=True)  # and an old network, however it was made
     subprocess.run(["docker", "network", "create", "--internal", NETWORK],  # --internal: no way out of it but the proxy
@@ -196,8 +204,10 @@ def agent_months() -> list[str]:
 
 
 def brief() -> str:
-    """Fill the dates into the brief. lab/program.md is a template: it names no date itself,
-    so it stays right when the as-of date advances.
+    """Fill the dates into the brief.
+
+    lab/program.md is a template: it names no date itself, so it stays right when the as-of
+    date advances.
 
     Returns
     -------
@@ -215,9 +225,11 @@ def brief() -> str:
 
 
 def agent_sandbox(work) -> list[str]:
-    """The docker command that starts the agent sandbox, up to the image name. The sandbox
-    sees only the turn's workspace and the agent's months of the data store, and its only
-    way out is the proxy."""
+    """The docker command that starts the agent sandbox, up to the image name.
+
+    The sandbox sees only the turn's workspace and the agent's months of the data store, and
+    its only way out is the proxy.
+    """
     return ["docker", "run", "--rm", "--pull", "never",
             "--network", NETWORK,                                  # no internet, except through the proxy
             "-e", f"HTTPS_PROXY=http://{PROXY}:3128",              # so Claude Code sends its requests to the proxy
@@ -229,8 +241,14 @@ def agent_sandbox(work) -> list[str]:
 
 
 def run_agent(work) -> dict:
-    """Run one agent session in the agent sandbox, on the workspace. Returns what Claude Code
-    printed: a JSON object with the agent's "structured_output", its "result" text and the cost."""
+    """Run one agent session in the agent sandbox, on the workspace.
+
+    Returns
+    -------
+    dict
+        What Claude Code printed: a JSON object with the agent's "structured_output", its
+        "result" text and the cost.
+    """
     run = subprocess.run(agent_sandbox(work) + AGENT, capture_output=True, text=True)
     try:
         return json.loads(run.stdout)
@@ -239,9 +257,12 @@ def run_agent(work) -> dict:
 
 
 def check_reply(reported, measured) -> str:
-    """Did the agent decide on the same practice numbers the ledger records? reported is the
-    "practice" part of its reply; measured is the loop's own measurement (None if there is none).
-    The loop's numbers are the record either way, so this never changes a verdict."""
+    """Say whether the agent decided on the same practice numbers the ledger records.
+
+    reported is the "practice" part of its reply; measured is the loop's own measurement
+    (None if there is none).
+    The loop's numbers are the record either way, so this never changes a verdict.
+    """
     if reported is None:
         return "not run"  # the agent says it couldn't run practice.py
     if measured is None:
@@ -256,8 +277,10 @@ def check_reply(reported, measured) -> str:
 
 
 def copy_submission(work, candidate) -> bool:
-    """Bring back the agent's model.py, but only if it's a plain file. A shortcut (symlink)
-    would be followed here on your Mac, so it could point at any file."""
+    """Bring back the agent's model.py, but only if it's a plain file.
+
+    A shortcut (symlink) would be followed here on your Mac, so it could point at any file.
+    """
     submitted = work / "model.py"
     if submitted.is_symlink() or not submitted.is_file():
         return False
@@ -266,6 +289,20 @@ def copy_submission(work, candidate) -> bool:
 
 
 def judge(*args) -> dict:
+    """Run the judge as a process of its own and read its answer.
+
+    Parameters
+    ----------
+    *args
+        The judge's command and what follows it, as on the command line: for example
+        `judge("practice", champion, candidate)`.
+
+    Returns
+    -------
+    dict
+        What the judge printed, a JSON object. If the judge failed, `{"error": ...}` with
+        the last line of its error text.
+    """
     run = subprocess.run([sys.executable, str(JUDGE / "judge.py"), *map(str, args)],
                          capture_output=True, text=True, timeout=900)
     if run.returncode != 0:
@@ -299,8 +336,10 @@ def last_turn() -> int:
 
 def log(turn, idea, verdict, **cells) -> None:
     """Add a row to the full ledger and print it, then rewrite the agent's copy.
+
     cells are the row's other columns by name; those left out show as "-". Every row records
-    the as-of date it was measured under."""
+    the as-of date it was measured under.
+    """
     cells = {"turn": turn, "as_of": as_of(), "idea": idea, "verdict": verdict, **cells}
     row = {c: " ".join(str(cells.get(c, "-")).split()) or "-" for c in COLUMNS}  # one line of text per cell, no tabs
     with LEDGER.open("a") as f:
@@ -311,10 +350,13 @@ def log(turn, idea, verdict, **cells) -> None:
 
 
 def write_agent_ledger() -> None:
-    """Rewrite the agent's copy from the full ledger: practice numbers, verdicts and lessons,
-    and no number measured on the validation period. The three comment lines on top say what
-    the agent is up against: the champion, the bar the next idea must clear, and the share of
-    practice reshuffles an idea needs before it is judged (SUBMIT_PCT)."""
+    """Rewrite the agent's copy from the full ledger.
+
+    It holds practice numbers, verdicts and lessons, and no number measured on the validation
+    period. The three comment lines on top say what the agent is up against: the champion,
+    the bar the next idea must clear, and the share of practice reshuffles an idea needs
+    before it is judged (SUBMIT_PCT).
+    """
     rows = read_ledger()
     champion = [r for r in rows if r["verdict"] in CHAMPIONS][-1]
     # the champion's newest practice score: after an advance, the one in the advance's row
@@ -349,9 +391,11 @@ def champion_scores() -> dict[str, float]:
 
 
 def start() -> None:
-    """Start the research from the baseline: save it as turn 0 and write its row, the first,
-    to both ledgers. The baseline is measured before the ledger is made, so if it can't be
-    measured, no half-made ledger is left behind."""
+    """Start the research from the baseline.
+
+    Save it as turn 0 and write its row, the first, to both ledgers. The baseline is measured
+    before the ledger is made, so if it can't be measured, no half-made ledger is left behind.
+    """
     scores = champion_scores()  # the baseline is the champion until an idea is kept
     HISTORY.mkdir(exist_ok=True)
     shutil.copy(LAB / "model.py", HISTORY / "turn_0.py")
@@ -428,8 +472,10 @@ def turn(t) -> None:
 
 
 def advance() -> None:
-    """Move the as-of date forward to the newest month in the data store, so the months that
-    have arrived since become part of the research. Run it by hand, between nights.
+    """Move the as-of date forward to the newest month in the data store.
+
+    The months that have arrived since become part of the research. Run it by hand, between
+    nights.
 
     The four periods move with the as-of date, by whole months: one or many, depending on
     how long it has been since the last advance. The champion is then measured on the new
@@ -467,9 +513,12 @@ def advance() -> None:
 
 
 def holdout() -> None:
-    """Score the baseline and every kept model on the holdout period: the newest months, which
-    no decision about any idea has used. Beside it goes the model's validation score, measured
-    now on the current validation period: the val_mae in an old ledger row may come from other months."""
+    """Score the baseline and every kept model on the holdout period.
+
+    The holdout period is the newest months, which no decision about any idea has used.
+    Beside each holdout score goes the model's validation score, measured now on the current
+    validation period: the val_mae in an old ledger row may come from other months.
+    """
     found = periods()
     print(f"as-of date {found['as_of']}: validation is {found['val'][0]} to {found['val'][-1]}, "
           f"holdout is {found['holdout'][0]} to {found['holdout'][-1]}")
@@ -482,9 +531,11 @@ def holdout() -> None:
 
 
 def reset() -> None:
-    """Go back to the baseline, and to the as-of date the research started under: the one in
-    the ledger's `start` row. The ledgers and history/ are cleared. The data store is left
-    alone, so months that have arrived stay."""
+    """Go back to the baseline, and to the as-of date the research started under.
+
+    That as-of date is the one in the ledger's `start` row. The ledgers and history/ are
+    cleared. The data store is left alone, so months that have arrived stay.
+    """
     AS_OF.write_text(read_ledger()[0]["as_of"] + "\n")
     shutil.copy(HISTORY / "turn_0.py", LAB / "model.py")
     shutil.rmtree(HISTORY)

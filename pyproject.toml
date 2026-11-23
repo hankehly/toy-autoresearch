@@ -44,14 +44,21 @@ select = [
     "I",                    # imports in one order
     "UP",                   # `list` not `List`, `X | None` not `Optional[X]`
     "ANN2",                 # a return type on every function
+    "D",                    # docstrings: every function has one, laid out the NumPy way
 ]
 ignore = [
     # `subprocess.run` without `check=`: the loop and the tests read the return code themselves.
     "PLW1510",
     # `dict(turn=turn, kept=kept)`: with many keys it reads more easily than the same in braces.
     "C408",
+    # A docstring's first line as a command ("Return the rows"): ours often name the thing
+    # returned instead ("The rows of the full ledger."), which reads just as well.
+    "D401",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 # A test's name says what it checks, and it returns nothing.
-"tests/*" = ["ANN"]
+"tests/*" = ["ANN", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"  # sections named Parameters, Returns and Raises, each underlined

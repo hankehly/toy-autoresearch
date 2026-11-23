@@ -25,6 +25,7 @@ FIRST = {m: int(DAYS.searchsorted(m)) for m in STARTS}
 
 
 def months(a, b) -> list[pd.Timestamp]:
+    """The first day of every month from a to b, both included."""
     return list(pd.date_range(a, b, freq="MS"))
 
 
@@ -50,6 +51,12 @@ def make_town(seed) -> tuple[np.ndarray, np.ndarray]:
 
 
 class Town:
+    """One town's three years: its forecast temperatures (t) and loads (y).
+
+    The other fields are running totals of the loads, kept so that a model can be scored on
+    any stretch of days without adding them up again.
+    """
+
     def __init__(self, seed) -> None:
         self.seed = seed
         self.t, self.y = make_town(seed)
@@ -67,8 +74,11 @@ JUNK = {}
 
 
 def junk(jid, town) -> np.ndarray:
-    """A made-up input with no link to the load. Even ids: an events calendar (10% of days).
-    Odd ids: a slow, humidity-like series. Every parallel town gets its own fresh draw."""
+    """A made-up input with no link to the load.
+
+    Even ids: an events calendar (10% of days). Odd ids: a slow, humidity-like series.
+    Every parallel town gets its own fresh draw.
+    """
     key = (jid, town.seed)
     if key not in JUNK:
         rng = np.random.default_rng([jid, town.seed])
@@ -87,12 +97,45 @@ def dow_offsets(town, h0, s) -> np.ndarray:
 
 
 def month_effects(resid, idx) -> np.ndarray:
+    """The average leftover miss in each of the 12 calendar months (0 for a month with no days).
+
+    Parameters
+    ----------
+    resid : numpy.ndarray
+        What the fitted model still missed on each training day.
+    idx : numpy.ndarray
+        Which day each of those misses belongs to.
+    """
     sums = np.bincount(MOY[idx], weights=resid, minlength=12)
     cnts = np.bincount(MOY[idx], minlength=12)
     return np.where(cnts > 0, sums / np.maximum(cnts, 1), 0.0)
 
 
 def run_month(p, town, F, cF, h0, s, e) -> np.ndarray:
+    """Fit a model on the days before one month and guess that month's loads.
+
+    Parameters
+    ----------
+    p : dict
+        The model's settings, such as TODAY or BEST.
+    town : Town
+        The town to fit and guess in.
+    F : numpy.ndarray
+        The model's inputs, one row per day: heating, cooling and any extra inputs.
+    cF : numpy.ndarray
+        The running totals of F.
+    h0 : int
+        The first day of the history the model may fit on.
+    s : int
+        The first day of the month.
+    e : int
+        The day after the month's last.
+
+    Returns
+    -------
+    numpy.ndarray
+        The guessed load for each day of the month.
+    """
     j = np.arange(s, e)
     if p["mode"] == "anchored":  # last week's level + weekday + change in inputs (turn 2's model)
         w = p["win"]
@@ -141,6 +184,7 @@ def errors(p, town, month_list) -> np.ndarray:
 
 
 def answer_key_errors(town, month_list) -> np.ndarray:
+    """Each day's miss, over these months, of the recipe that made the data."""
     idx = np.concatenate([np.arange(FIRST[m], FIRST[m + pd.offsets.MonthBegin(1)]) for m in month_list])
     t = town.t[idx]
     weekend = np.select([DOW[idx] == 5, DOW[idx] == 6], [-8.0, -12.0], 0.0)
@@ -174,6 +218,24 @@ SETTINGS = ["mode", "th", "tc", "win", "hist", "shrink", "dow", "moy"]
 
 
 def propose(p, idea, rng, fresh_ids) -> list[dict]:
+    """The versions of one idea that the robot tries privately: up to 7.
+
+    Parameters
+    ----------
+    p : dict
+        The champion's settings.
+    idea : str
+        "new input", or the name of the setting to change (one of SETTINGS).
+    rng : numpy.random.Generator
+        Where the random tweaks come from.
+    fresh_ids : Iterator[int]
+        Ids for noise inputs no earlier turn has used.
+
+    Returns
+    -------
+    list[dict]
+        One settings dict per version.
+    """
     if idea == "new input":
         return [dict(p, junk=p["junk"] + (next(fresh_ids),)) for _ in range(7)]
     if idea == "mode":
@@ -197,12 +259,29 @@ def propose(p, idea, rng, fresh_ids) -> list[dict]:
 
 
 class Lab:
+    """The toy town, the parallel towns that give the truth, and every score measured so far."""
+
     def __init__(self, universes=100) -> None:
         self.town = Town(7)
         self.multiverse = [Town(1000 + u) for u in range(universes)]
         self.cache = {}
 
     def score(self, p, what) -> np.ndarray | float:
+        """Score the model with settings p, measuring each (settings, what) pair only once.
+
+        Parameters
+        ----------
+        p : dict
+            The model's settings.
+        what : str
+            "practice", "val" or "holdout" for that period in the toy town, or "truth".
+
+        Returns
+        -------
+        numpy.ndarray or float
+            Each day's miss over the period. For "truth", one number: the average miss over
+            the validation and holdout periods in every parallel town.
+        """
         key = (tuple(sorted(p.items())), what)
         if key not in self.cache:
             if what == "truth":
@@ -212,8 +291,30 @@ class Lab:
         return self.cache[key]
 
     def night(self, start, private, rule, seed, new_input_share=0.5, turns=300) -> pd.DataFrame:
-        """private: which year the robot tests on before submitting ("val" = today's toy, "practice" = fixed).
-        rule: keep_by_days (today) or keep_by_weeks (fixed)."""
+        """Simulate one night: the robot has one idea per turn and the rule decides what is kept.
+
+        Parameters
+        ----------
+        start : dict
+            The settings of the champion the night starts from.
+        private : str
+            Which year the robot tests on before submitting: "val" (today's toy) or
+            "practice" (fixed).
+        rule : Callable
+            keep_by_days (today) or keep_by_weeks (fixed).
+        seed : int
+            The seed for the robot's random choices.
+        new_input_share : float
+            The share of ideas that add a pure-noise input; the rest tweak a setting.
+        turns : int
+            How many turns the night has.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per turn: the idea, whether it was submitted and kept, and the champion's
+            validation, holdout and true scores after the turn.
+        """
         JUNK.clear()
         self.cache = {k: v for k, v in self.cache.items() if not dict(k[0])["junk"]}
         rng = np.random.default_rng(seed)
