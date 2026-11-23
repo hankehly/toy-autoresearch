@@ -1,7 +1,7 @@
 # Runs every test on GitHub: on each pull request, and on each push to main.
 # The tests are one command, the same one you run on your Mac. It needs Docker, which
 # GitHub's Linux machines have, and no login token, so this repo stores no secret.
-name: tests
+name: CI
 
 on:
   pull_request:
@@ -12,7 +12,7 @@ permissions:
   contents: read  # the job only reads the code
 
 jobs:
-  tests:
+  pytest:
     runs-on: ubuntu-latest
     timeout-minutes: 20  # the tests take about 3 minutes on a Mac; stop a run that hangs
     steps:

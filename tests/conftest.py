@@ -11,7 +11,7 @@ No test touches data/ or as_of.txt, and none changes lab/, history/ or the ledge
 test file gets an empty data folder of its own (the data_folder fixture below), so a fresh
 checkout needs no `make_data.py` first, and an as-of file of its own that says 2025-12 (the
 as_of_file fixture), so the scores a test expects stay right after the real as-of date has
-advanced. GitHub runs the same command on every pull request (.github/workflows/tests.yml).
+advanced. GitHub runs the same command on every pull request (.github/workflows/ci.yml).
 
 A fixture is a function that prepares something a test needs. A test asks for one by naming
 it as a parameter. "module" scope means it runs once for a test file, "session" scope once

@@ -162,7 +162,7 @@ The lessons are meant to carry over to real problems like these.
   `uv run pytest tests/test_store.py`. Tests by name: `uv run pytest -k proxy`. `tests/conftest.py`
   holds what the five test files share.
 - GitHub runs `uv run pytest` on every pull request and every push to `main`
-  (`.github/workflows/tests.yml`). It needs no secret.
+  (`.github/workflows/ci.yml`). It needs no secret.
 - Docker Desktop must be running. `uv run loop.py build` builds the three images (`run`,
   `advance` and `holdout` do it first anyway); `uv run pytest tests/test_sandboxes.py` checks the isolation
   (about 30 s).
