@@ -423,8 +423,25 @@ check("an advance that can't measure the champion stops, and leaves the as-of da
       "Not advanced" in stopped and AS_OF.read_text() == "2025-12\n" and loop.read_ledger() == rows_before, stopped or AS_OF.read_text())
 (loop.LAB / "model.py").write_text(REGRESSION)
 
+
+def interrupted() -> None:
+    """Stands in for loop.write_agent_ledger() when Ctrl-C arrives just after the full ledger got its row."""
+    raise KeyboardInterrupt
+
+
+files_before = [path.read_bytes() for path in (AS_OF, loop.LEDGER, loop.AGENT_LEDGER)]
+write_agent_ledger, loop.write_agent_ledger = loop.write_agent_ledger, interrupted
+try:
+    stops(loop.advance)
+except KeyboardInterrupt:
+    pass
+loop.write_agent_ledger = write_agent_ledger
+check("an advance interrupted while it writes the ledgers leaves the as-of date and both ledgers as they were",
+      [path.read_bytes() for path in (AS_OF, loop.LEDGER, loop.AGENT_LEDGER)] == files_before,
+      f"as-of date {AS_OF.read_text().strip()}, {len(loop.read_ledger())} rows in the full ledger")
+
 stopped = stops(loop.advance)
-check("advance: as_of.txt reads 2026-06", stopped == "" and AS_OF.read_text() == "2026-06\n", stopped or AS_OF.read_text())
+check("advance: as_of.txt reads 2026-06",stopped == "" and AS_OF.read_text() == "2026-06\n", stopped or AS_OF.read_text())
 check("advance: the periods are the second column of the issue's table", periods() == PERIODS["2026-06"], periods())
 row = loop.read_ledger()[-1]
 check("advance: one `advanced` row, with no turn number, under the new as-of date",
