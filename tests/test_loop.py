@@ -7,14 +7,19 @@ the real model sandbox. Only the agent is replaced: a stand-in that changes mode
 returns a reply, as Claude Code would. So no login token is needed, and nothing in lab/,
 history/ or the ledgers is touched. The as-of date is held at 2025-12 in a temporary file
 (see as_of_file in conftest.py), so the scores expected here stay right after the real one
-has advanced. About 1 minute.
+has advanced. About 1.5 minutes.
 
 The 14 turns are played once, in order, by the `turns` fixture, which records what each
 turn left behind. Each test then reads one turn's record, so any test can run alone.
+
+The last section checks the try count on a ledger of its own (the `eight_tries` fixture):
+8 tries, then four real advances, and after each one the try count and the bar on top of
+the agent's ledger.
 """
 import json
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -151,10 +156,21 @@ def test_the_judge_names_the_bar_for_the_7th_idea():
     assert loop.judge("bar", 7) == {"bar_pct": 99.29}
 
 
+def test_the_judge_names_the_bar_for_an_idea_whose_number_is_not_whole():
+    # 8 tries and a one-month advance: the try count is 7.33, so the next idea is judged as number 8.33
+    assert loop.judge("bar", 8 * 11 / 12 + 1) == {"bar_pct": 99.4}
+
+
 def test_the_judges_validation_verdict_is_unchanged(models):
     # turn 3 of the example run
     still = loop.judge("compare", models["regression"], models["yesterday"], 3)
     assert still == {"champion_mae": 2.915, "candidate_mae": 2.893, "win_pct": 67.91, "bar_pct": 98.33, "keep": False}
+
+
+def test_the_judge_gives_a_verdict_on_an_idea_whose_number_is_not_whole(models):
+    # the same two models after one try and a six-month advance: the try count is 0.5, so the idea is number 1.5
+    judged = loop.judge("compare", models["regression"], models["yesterday"], 1.5)
+    assert judged == {"champion_mae": 2.915, "candidate_mae": 2.893, "win_pct": 67.91, "bar_pct": 96.67, "keep": False}
 
 
 # --- lab/practice.py gives the agent the same practice numbers ----------------------
@@ -275,6 +291,24 @@ def after(workspace=None) -> After:
                  workspace_files=workspace["files"], workspace_ledger=workspace["ledger"])
 
 
+def point_the_loop_at(folder, patch) -> None:
+    """Point the loop at a lab, a history and ledgers of its own, with the baseline as model.py.
+
+    Parameters
+    ----------
+    folder : Path
+        An empty temporary folder, where they are made.
+    patch : pytest.MonkeyPatch
+        Makes the change, and undoes it when its `with` block ends.
+    """
+    patch.setattr(loop, "LAB", folder / "lab")
+    patch.setattr(loop, "HISTORY", folder / "history")
+    patch.setattr(loop, "LEDGER", folder / "ledger.tsv")
+    patch.setattr(loop, "AGENT_LEDGER", folder / "lab" / "ledger.tsv")
+    loop.LAB.mkdir()
+    (loop.LAB / "model.py").write_text(BASELINE)
+
+
 @pytest.fixture(scope="module")
 def started(toy_store, tmp_path_factory) -> Iterator[After]:
     """Point the loop at a temporary lab, history and ledgers, and start them: loop.start().
@@ -296,14 +330,9 @@ def started(toy_store, tmp_path_factory) -> Iterator[After]:
     """
     folder = tmp_path_factory.mktemp("loop")
     with pytest.MonkeyPatch.context() as patch:  # undoes its changes when the test file is done
-        patch.setattr(loop, "LAB", folder / "lab")
-        patch.setattr(loop, "HISTORY", folder / "history")
-        patch.setattr(loop, "LEDGER", folder / "ledger.tsv")
-        patch.setattr(loop, "AGENT_LEDGER", folder / "lab" / "ledger.tsv")
-        loop.LAB.mkdir()
+        point_the_loop_at(folder, patch)
         for name in ("program.md", "check.py", "practice.py"):
             shutil.copy(ROOT / "lab" / name, loop.LAB / name)
-        (loop.LAB / "model.py").write_text(BASELINE)
         loop.start()
         yield after()
 
@@ -436,9 +465,9 @@ def cells(row, *names) -> list[str]:
 
 PRACTICE = ("practice_champion", "practice", "practice_wins")
 VALIDATION = ("val_mae", "win_pct", "bar_pct")
-# The second comment line of the agent's copy says how many ideas were judged, and the next bar.
-ONE_JUDGED = "Ideas judged: 1. The next must win 97.5%"
-TWO_JUDGED = "Ideas judged: 2. The next must win 98.33%"
+# The second comment line of the agent's copy gives the try count, and the bar that follows from it.
+ONE_TRY = "Try count: 1.00. The next idea must win 97.5%"
+TWO_TRIES = "Try count: 2.00. The next idea must win 98.33%"
 
 
 # --- The two ledgers, after loop.start() --------------------------------------------------
@@ -456,7 +485,7 @@ def test_start_the_agents_copy_has_three_comment_lines(started):
     # they name the champion, the next bar and when to submit
     assert started.agent_ledger[:3] == [
         "# Champion: turn 0, practice 5.656 MWh",
-        "# Ideas judged: 0. The next must win 95.0% of the judge's reshuffles.",
+        "# Try count: 0.00. The next idea must win 95.0% of the judge's reshuffles.",
         f"# To be judged, an idea must win at least {loop.SUBMIT_PCT}% of the practice reshuffles."]
 
 
@@ -497,7 +526,7 @@ def test_turn_1_model_py_is_the_new_champion(turns):
 
 def test_turn_1_the_agents_copy_names_the_new_champion_and_a_higher_bar(turns):
     assert turns[1].agent_ledger[:2] == ["# Champion: turn 1, practice 3.036 MWh",
-                                         "# Ideas judged: 1. The next must win 97.5% of the judge's reshuffles."]
+                                         "# Try count: 1.00. The next idea must win 97.5% of the judge's reshuffles."]
 
 
 def test_turn_1_the_agent_gets_practice_py_and_nothing_but_the_lab_files(turns):
@@ -531,7 +560,7 @@ def test_turn_2_it_never_reached_the_judge(turns):
 
 
 def test_turn_2_the_bar_doesnt_rise(turns):
-    assert ONE_JUDGED in turns[2].agent_ledger[1]
+    assert ONE_TRY in turns[2].agent_ledger[1]
 
 
 def test_turn_2_the_champion_stays_and_the_ideas_code_is_saved_in_history(turns):
@@ -559,7 +588,7 @@ def test_turn_3_it_never_reached_the_judge(turns):
 
 
 def test_turn_3_the_bar_doesnt_rise(turns):
-    assert ONE_JUDGED in turns[3].agent_ledger[1]
+    assert ONE_TRY in turns[3].agent_ledger[1]
 
 
 def test_turn_3_the_whole_response_is_saved_in_history_so_the_reason_isnt_lost(turns):
@@ -575,7 +604,7 @@ def test_turns_4_to_8_a_reply_the_schema_refuses_is_an_invalid_reply(number, tur
 
 
 def test_turns_4_to_8_five_more_invalid_replies_and_the_bar_still_hasnt_risen(turns):
-    assert ONE_JUDGED in turns[8].agent_ledger[1]
+    assert ONE_TRY in turns[8].agent_ledger[1]
 
 
 # --- Turn 9: a valid reply that asks to submit, but model.py is the champion --------------
@@ -615,7 +644,7 @@ def test_turn_11_the_ledgers_show_only_the_word_crashed_never_the_error_text(tur
 
 
 def test_turn_11_the_bar_doesnt_rise(turns):
-    assert ONE_JUDGED in turns[11].agent_ledger[1]
+    assert ONE_TRY in turns[11].agent_ledger[1]
 
 
 # --- Turn 12: the same small gain as turn 2, submitted this time ---------------------------
@@ -634,7 +663,7 @@ def test_turn_12_reply_check_is_not_run_when_the_replys_practice_is_null(turns):
 
 
 def test_turn_12_now_the_bar_rises(turns):
-    assert TWO_JUDGED in turns[12].agent_ledger[1]
+    assert TWO_TRIES in turns[12].agent_ledger[1]
 
 
 def test_turn_12_the_champion_stays(turns):
@@ -659,7 +688,7 @@ def test_turn_14_the_agents_own_practice_numbers_cant_get_it_judged(turns):
 
 
 def test_turn_14_the_bar_stays_where_turn_12_left_it(turns):
-    assert TWO_JUDGED in turns[14].agent_ledger[1]
+    assert TWO_TRIES in turns[14].agent_ledger[1]
 
 
 # --- After 14 turns: nothing from the validation period has reached the agent ----------
@@ -697,3 +726,64 @@ def test_the_agents_command_passes_json_schema_the_loops_own_reply_schema():
 def test_the_agents_command_still_asks_for_output_format_json_with_the_tool_limits():
     assert loop.AGENT[loop.AGENT.index("--output-format") + 1] == "json"
     assert "--allowedTools" in loop.AGENT
+
+
+# --- The try count: a try counts for less as its validation months leave (issue #5) --------
+# The table in issue #5. Eight tries under the as-of date 2025-12 count 8.00. One month on,
+# 11 of the 12 months they were judged on are still in the validation period, so they count
+# 8 x 11/12 = 7.33. Six months on they count 4.00, and twelve or more months on, nothing.
+# The next idea must win 1 - 5% / (try count + 1) of the judge's reshuffles.
+
+# The verdicts logged after the baseline: 8 tries (2 kept, 6 thrown away), and 4 rows that
+# were never judged, so they are not tries.
+VERDICTS = ["KEPT", "thrown away", "dropped on practice", "thrown away", "crashed", "thrown away",
+            "KEPT", "no change", "thrown away", "invalid reply", "thrown away", "thrown away"]
+
+
+@pytest.fixture(scope="module")
+def eight_tries(toy_store, as_of_file, tmp_path_factory) -> dict[int, str]:
+    """In a lab of its own: start the ledgers, log 8 tries under the as-of date 2025-12, then
+    four times let months arrive and advance (loop.advance()), until the as-of date is 1, 6,
+    12 and 13 months past the tries.
+
+    The as-of date is 2025-12 again afterwards. The months that arrived stay in the store,
+    which moves no period while the as-of date stays put.
+
+    Parameters
+    ----------
+    toy_store : None
+        The toy's data, which the judge reads.
+    as_of_file : Path
+        The test file's as-of file.
+    tmp_path_factory : pytest.TempPathFactory
+        pytest's own fixture, which makes temporary folders.
+
+    Returns
+    -------
+    dict[int, str]
+        The second line on top of the agent's ledger, by how many months the as-of date had
+        advanced since the tries: 0, 1, 6, 12 and 13.
+    """
+    folder = tmp_path_factory.mktemp("eight-tries")
+    second_line = {}
+    with pytest.MonkeyPatch.context() as patch:  # the loop's folders point back when the tries are done
+        point_the_loop_at(folder, patch)
+        loop.start()
+        for number, verdict in enumerate(VERDICTS, 1):
+            loop.log(number, "an idea worth trying", verdict)
+        second_line[0] = loop.AGENT_LEDGER.read_text().splitlines()[1]
+        try:
+            for months, newest in [(1, "2026-01"), (6, "2026-06"), (12, "2026-12"), (13, "2027-01")]:
+                subprocess.run([sys.executable, "scripts/ingest.py", "--through", newest], cwd=ROOT, check=True, capture_output=True)
+                loop.advance()
+                second_line[months] = loop.AGENT_LEDGER.read_text().splitlines()[1]
+        finally:  # whatever happened, the other tests of this file find the as-of date they expect
+            as_of_file.write_text("2025-12\n")
+    return second_line
+
+
+@pytest.mark.parametrize("months, try_count, bar", [(0, "8.00", "99.44"), (1, "7.33", "99.4"), (6, "4.00", "99.0"),
+                                                    (12, "0.00", "95.0"), (13, "0.00", "95.0")])
+def test_eight_tries_count_for_less_with_every_month_the_as_of_date_has_advanced(months, try_count, bar, eight_tries):
+    # the agent's ledger shows the try count, and the bar that follows from it
+    assert eight_tries[months] == f"# Try count: {try_count}. The next idea must win {bar}% of the judge's reshuffles."

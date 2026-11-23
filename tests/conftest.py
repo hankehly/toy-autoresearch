@@ -2,7 +2,7 @@
 
 Run the tests from the repo root (Docker must be running; no login token is needed):
 
-    uv run pytest                        # every test (about 3 minutes)
+    uv run pytest                        # every test (about 3.5 minutes)
     uv run pytest tests/test_store.py    # one file
     uv run pytest -k proxy               # the tests with "proxy" in their names
     uv run pytest -v                     # one line per test, by name
