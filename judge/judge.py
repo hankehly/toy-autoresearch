@@ -114,39 +114,21 @@ def open_model_sandbox(model_path, period) -> subprocess.Popen:
         The running sandbox. The judge talks to it through stdin and stdout.
     """
     first_scored = periods()[period][0]
-    return subprocess.Popen(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "-i",
-            "--pull",
-            "never",
-            "--network",
-            "none",  # no internet
-            "--read-only",
-            "--tmpfs",
-            "/tmp",  # can't change any file; /tmp vanishes afterwards
-            "--user",
-            "65534:65534",  # runs as "nobody", not as you
-            "--cap-drop",
-            "ALL",
-            "--security-opt",
-            "no-new-privileges",  # can't give itself extra powers
-            "--cpus",
-            "2",
-            "--pids-limit",
-            "64",  # can't hog your Mac's processors (no memory cap: real data is big)
-            "-v",
-            f"{Path(model_path).resolve()}:/sandbox/model.py:ro",  # its one file of code, read-only
-            # its history, read-only at /data
-            *store.mounts([month for month in store.months() if month < first_scored]),
-            "toy-model-sandbox",
-        ],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
-    )
+    # fmt: off
+    # (the formatter leaves this list alone: each line is one setting, with its reason beside it)
+    command = [
+        "docker", "run", "--rm", "-i", "--pull", "never",
+        "--network", "none",                                         # no internet
+        "--read-only", "--tmpfs", "/tmp",                            # can't change any file; /tmp vanishes afterwards
+        "--user", "65534:65534",                                     # runs as "nobody", not as you
+        "--cap-drop", "ALL", "--security-opt", "no-new-privileges",  # can't give itself extra powers
+        "--cpus", "2", "--pids-limit", "64",                         # can't hog your Mac's processors (no memory cap: real data is big)
+        "-v", f"{Path(model_path).resolve()}:/sandbox/model.py:ro",  # its one file of code, read-only
+        *store.mounts([month for month in store.months() if month < first_scored]),  # its history, read-only at /data
+        "toy-model-sandbox",
+    ]
+    # fmt: on
+    return subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 
 
 def send(sandbox, message) -> None:

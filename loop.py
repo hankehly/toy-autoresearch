@@ -139,26 +139,19 @@ SUBMIT_PCT = 90
 
 # The steps of a turn are in program.md, the brief you edit.
 PROMPT = "Read program.md and follow its steps. Finish with the structured reply."
-# the reply's shape; it comes back as "structured_output"
+# fmt: off
+# (the formatter leaves this list alone: each line is one setting, with its reason beside it)
 AGENT = [
-    "timeout",
-    "1800",  # a turn still running after 30 minutes is stopped
-    "claude",
-    "-p",
-    PROMPT,
-    "--model",
-    "sonnet",
-    "--permission-mode",
-    "acceptEdits",  # may edit files in its own workspace only
-    "--allowedTools",
-    "Bash(python *),Bash(python3 *)",  # and run python; anything else is refused
-    "--disallowedTools",
-    "WebSearch,WebFetch",  # no web tools: its only sources are the lab files
-    "--output-format",
-    "json",
-    "--json-schema",
-    json.dumps(REPLY_SCHEMA),
+    "timeout", "1800",                                   # a turn still running after 30 minutes is stopped
+    "claude", "-p", PROMPT,
+    "--model", "sonnet",
+    "--permission-mode", "acceptEdits",                  # may edit files in its own workspace only
+    "--allowedTools", "Bash(python *),Bash(python3 *)",  # and run python; anything else is refused
+    "--disallowedTools", "WebSearch,WebFetch",           # no web tools: its only sources are the lab files
+    "--output-format", "json",
+    "--json-schema", json.dumps(REPLY_SCHEMA),           # the reply's shape; it comes back as "structured_output"
 ]
+# fmt: on
 
 
 def build() -> None:
@@ -302,25 +295,19 @@ def agent_sandbox(work) -> list[str]:
     The sandbox sees only the turn's workspace and the agent's months of the data store, and
     its only way out is the proxy.
     """
+    # fmt: off
+    # (the formatter leaves this list alone: each line is one setting, with its reason beside it)
     return [
-        "docker",
-        "run",
-        "--rm",
-        "--pull",
-        "never",
-        "--network",
-        NETWORK,  # no internet, except through the proxy
-        "-e",
-        f"HTTPS_PROXY=http://{PROXY}:3128",  # so Claude Code sends its requests to the proxy
-        "-e",
-        "CLAUDE_CODE_OAUTH_TOKEN",  # your login token, passed on by name from your shell
-        "-e",
-        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",  # no update checks or error reports
-        "-v",
-        f"{work}:/work",  # the turn's workspace: the only folder it can change
-        *store.mounts(agent_months()),  # the agent's months, read-only at /data
+        "docker", "run", "--rm", "--pull", "never",
+        "--network", NETWORK,                                # no internet, except through the proxy
+        "-e", f"HTTPS_PROXY=http://{PROXY}:3128",            # so Claude Code sends its requests to the proxy
+        "-e", "CLAUDE_CODE_OAUTH_TOKEN",                     # your login token, passed on by name from your shell
+        "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",  # no update checks or error reports
+        "-v", f"{work}:/work",                               # the turn's workspace: the only folder it can change
+        *store.mounts(agent_months()),                       # the agent's months, read-only at /data
         "toy-agent-sandbox",
     ]
+    # fmt: on
 
 
 def run_agent(work) -> dict:
