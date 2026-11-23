@@ -289,32 +289,34 @@ class Lab:
         self.multiverse = [Town(1000 + u) for u in range(universes)]
         self.cache = {}
 
-    def score(self, p, what) -> np.ndarray | float:
-        """Score the model with settings p, measuring each (settings, what) pair only once.
+    def score(self, p, period) -> np.ndarray:
+        """Each day's miss in the toy town, for the model with settings p.
+
+        Each (settings, period) pair is measured only once.
 
         Parameters
         ----------
         p : dict
             The model's settings.
-        what : str
-            "practice", "val" or "holdout" for that period in the toy town, or "truth".
-
-        Returns
-        -------
-        numpy.ndarray or float
-            Each day's miss over the period. For "truth", one number: the average miss over
-            the validation and holdout periods in every parallel town.
+        period : str
+            "practice", "val" or "holdout".
         """
-        key = (tuple(sorted(p.items())), what)
+        key = (tuple(sorted(p.items())), period)
         if key not in self.cache:
-            if what == "truth":
-                self.cache[key] = float(
-                    np.mean([errors(p, t, VAL + HOLDOUT).mean() for t in self.multiverse])
-                )
-            else:
-                self.cache[key] = errors(
-                    p, self.town, {"practice": PRACTICE, "val": VAL, "holdout": HOLDOUT}[what]
-                )
+            months_of = {"practice": PRACTICE, "val": VAL, "holdout": HOLDOUT}
+            self.cache[key] = errors(p, self.town, months_of[period])
+        return self.cache[key]
+
+    def truth(self, p) -> float:
+        """The true error of the model with settings p, measured only once.
+
+        It is the average miss over the validation and holdout periods in every parallel town.
+        """
+        key = (tuple(sorted(p.items())), "truth")
+        if key not in self.cache:
+            self.cache[key] = float(
+                np.mean([errors(p, t, VAL + HOLDOUT).mean() for t in self.multiverse])
+            )
         return self.cache[key]
 
     def night(self, start, private, rule, seed, new_input_share=0.5, turns=300) -> pd.DataFrame:
@@ -365,7 +367,7 @@ class Lab:
                 submitted, k = True, k + 1
                 kept, share = rule(self.score(champ, "val"), self.score(best, "val"), k)
                 if kept:
-                    truth_change = self.score(best, "truth") - self.score(champ, "truth")
+                    truth_change = self.truth(best) - self.truth(champ)
                     champ = best
             rows.append(
                 dict(
@@ -377,7 +379,7 @@ class Lab:
                     truth_change=truth_change,
                     val=self.score(champ, "val").mean(),
                     holdout=self.score(champ, "holdout").mean(),
-                    truth=self.score(champ, "truth"),
+                    truth=self.truth(champ),
                     inputs=len(champ["junk"]),
                     champion=str(champ),
                 )
@@ -405,36 +407,37 @@ if __name__ == "__main__":
     )
     nights = []
     for scenario, start in SCENARIOS.items():
-        s = {w: lab.score(start, w) for w in ("val", "holdout", "truth")}
+        start_val, start_truth = lab.score(start, "val").mean(), lab.truth(start)
         print(
-            f"\n{scenario}: start validation {s['val'].mean():.3f}  "
-            f"holdout {s['holdout'].mean():.3f}  truth {s['truth']:.3f}"
+            f"\n{scenario}: start validation {start_val:.3f}  "
+            f"holdout {lab.score(start, 'holdout').mean():.3f}  truth {start_truth:.3f}"
         )
         for name, (private, rule) in SYSTEMS.items():
             for seed in range(10):
                 df = lab.night(start, private, rule, seed)
                 df["scenario"], df["system"], df["seed"] = scenario, name, seed
-                df["ledger_gain"] = s["val"].mean() - df.val
-                df["true_gain"] = s["truth"] - df.truth
+                df["ledger_gain"] = start_val - df.val
+                df["true_gain"] = start_truth - df.truth
                 nights.append(df)
         part = pd.concat([n for n in nights if n.scenario.iloc[0] == scenario])
         end, keeps = part[part.turn == 300], part[part.kept]
         print(
             pd.DataFrame(
                 {
-                    "kept": keeps.groupby("system").size().reindex(SYSTEMS, fill_value=0) / 10,
+                    "kept": keeps.groupby("system").size().reindex(list(SYSTEMS), fill_value=0)
+                    / 10,
                     "noise inputs kept": end.groupby("system").inputs.mean(),
                     "flukes kept": keeps[keeps.truth_change >= 0]
                     .groupby("system")
                     .size()
-                    .reindex(SYSTEMS, fill_value=0)
+                    .reindex(list(SYSTEMS), fill_value=0)
                     / 10,
                     "ledger gain": end.groupby("system").ledger_gain.mean(),
                     "true gain": end.groupby("system").true_gain.mean(),
                     "final holdout": end.groupby("system").holdout.mean(),
                 }
             )
-            .reindex(SYSTEMS)
+            .reindex(list(SYSTEMS))
             .round(3)
             .to_string()
         )

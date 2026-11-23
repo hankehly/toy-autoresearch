@@ -533,7 +533,7 @@ def turn(t) -> None:
         }
 
     # the verdicts that never reach the judge. None of them counts as a try, so the bar stays put
-    if not valid:
+    if reply is None or not valid:  # a missing reply is never valid; naming it tells pyright so
         log(t, "-", "invalid reply", **row)  # the practice numbers, if any, are still logged
         return
     idea = reply["idea"]
@@ -545,6 +545,7 @@ def turn(t) -> None:
     if crashed:
         log(t, idea, "crashed", **row)  # only the word: a model's error text could carry anything
         return
+    assert measured is not None  # the model changed and ran, so the loop measured it
     # the loop goes by its own practice numbers, so a wrong number in the reply can't get an idea judged
     if not reply["submit"] or measured["win_pct"] < SUBMIT_PCT:
         log(t, idea, "dropped on practice", **row)

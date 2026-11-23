@@ -24,6 +24,7 @@ import subprocess
 import sys
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -681,7 +682,7 @@ def advances_cut_short(six_months_arrived, as_of_file) -> dict:
         first advance stopped with, and "after_crashed", the three files after it.
         "after_interrupted", the three files after the second.
     """
-    seen = {"before": files_an_advance_writes(as_of_file)}
+    seen: dict[str, Any] = {"before": files_an_advance_writes(as_of_file)}
 
     (loop.LAB / "model.py").write_text(CRASHES)
     seen["crashed"] = stops(loop.advance)
@@ -895,6 +896,7 @@ def newest_month_in_the_model_sandbox(model_path, period) -> float:
     """
     sandbox = judge.open_model_sandbox(model_path, period)
     guess = judge.request(sandbox, {"op": "predict", "today": {"date": "2000-01-01"}})["guess"]
+    assert sandbox.stdin is not None  # open_model_sandbox() opens it as a pipe
     sandbox.stdin.close()
     sandbox.wait()
     return guess

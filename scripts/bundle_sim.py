@@ -118,7 +118,7 @@ def near_miss_bundle(world, pick_on, first_id, truth_towns) -> tuple[float, floa
             for t in truth_towns
         ]
     )
-    return gain, luck, clears, true_gain
+    return gain, luck, clears, float(true_gain)
 
 
 def case_bc(pick_on, worlds=40) -> pd.Series:

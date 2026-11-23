@@ -198,6 +198,7 @@ def test_the_model_sandboxs_newest_month_is_the_one_before_the_first_scored_mont
 ):
     sandbox = judge.open_model_sandbox(write_model(tmp_path, NAMES_ITS_NEWEST_MONTH), period)
     guess = judge.request(sandbox, {"op": "predict", "today": {"date": "2000-01-01"}})["guess"]
+    assert sandbox.stdin is not None  # open_model_sandbox() opens it as a pipe
     sandbox.stdin.close()
     sandbox.wait()
     assert guess == newest

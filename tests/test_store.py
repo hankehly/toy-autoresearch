@@ -20,6 +20,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -267,7 +268,10 @@ def ingested(made, baseline) -> dict:
         "store_after_older_ingest": every file of the store after `--through 2026-03`.
         "scores": the judge's validation scores for the two known models, after all that.
     """
-    seen = {"store_before": file_bytes(store.STORE), "future_before": file_bytes(store.FUTURE)}
+    seen: dict[str, Any] = {
+        "store_before": file_bytes(store.STORE),
+        "future_before": file_bytes(store.FUTURE),
+    }
     seen["run"] = run("scripts/ingest.py", "--through", "2026-06")
     seen.update(
         {
@@ -374,7 +378,7 @@ def writes_failed(ingested) -> dict:
         that write, and how many the whole folder reads as afterwards.
     """
     write_that_fails("2026-07")  # a month the store doesn't have yet
-    seen = {"newest_after_failed_write": store.months()[-1]}
+    seen: dict[str, Any] = {"newest_after_failed_write": store.months()[-1]}
 
     run("scripts/ingest.py", "--through", "2026-07")
     seen.update(

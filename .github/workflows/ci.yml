@@ -29,3 +29,4 @@ jobs:
       - uses: astral-sh/setup-uv@v10.4.0
       - run: uv run --locked ruff check  # likely mistakes, and the style rules in CLAUDE.md (the rule list is in pyproject.toml)
       - run: uv run --locked ruff format --check  # the layout `uv run ruff format` gives: one way to break a long line
+      - run: uv run --locked pyright  # a value used as the wrong type, such as something that may be None

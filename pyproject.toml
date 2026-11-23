@@ -18,10 +18,20 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "pandas-stubs~=2.2.3",
+    "pyright>=1.1.414",
     # Runs the tests: `uv run pytest`.
     "pytest>=9.2.0",
     "ruff>=0.17.6",
 ]
+
+[tool.pyright]
+# Pyright reads the code without running it and reports a value used as the wrong type: a
+# number treated as a table, something that may be None used as if it never were.
+include = ["loop.py", "store.py", "judge", "lab", "docker", "scripts", "tests"]
+exclude = ["lab/model.py"]  # the agent writes it (as with ruff, above)
+# The folders whose files import each other by bare name (`import store`, `import model`).
+extraPaths = ["judge", "lab", "scripts", "docker/model-sandbox"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]        # `uv run pytest` runs every test in tests/

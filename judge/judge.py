@@ -174,6 +174,7 @@ def daily_misses(model_path, period) -> np.ndarray:
                 raise ValueError(f"prediction for {day['date']} is not a number")
             misses.append(abs(day["load"] - guess))
             send(sandbox, {"op": "reveal", "days": [day]})  # only now is today the past
+    assert sandbox.stdin is not None  # open_model_sandbox() opens it as a pipe
     sandbox.stdin.close()  # no more messages: the runner finishes and Docker removes the container
     sandbox.wait()
     return np.array(misses)
