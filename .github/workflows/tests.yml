@@ -1,0 +1,21 @@
+# Runs every test on GitHub: on each pull request, and on each push to main.
+# The tests are one command, the same one you run on your Mac. It needs Docker, which
+# GitHub's Linux machines have, and no login token, so this repo stores no secret.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read  # the job only reads the code
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20  # the tests take about 2 minutes on a Mac; stop a run that hangs
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0  # uv installs Python 3.12 and the locked packages on the first `uv run`
+      - run: uv run pytest
