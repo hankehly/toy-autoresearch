@@ -5,10 +5,12 @@
 Every turn here is a real loop.turn() on a temporary copy of lab/, with the real judge and
 the real model sandbox. Only the agent is replaced: a stand-in that changes model.py and
 returns a reply, as Claude Code would. So no login token is needed, and nothing in lab/,
-history/ or the ledgers is touched.
+history/ or the ledgers is touched. The as-of date is held at 2025-12 in a temporary file
+(TOY_AS_OF), so the scores expected here stay right after the real one has advanced.
 Prints PASS or FAIL for each check, and exits with 1 if any check failed (about 1 minute).
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -16,13 +18,15 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+TMP = Path(tempfile.mkdtemp(prefix="test-loop-"))
+os.environ["TOY_AS_OF"] = str(TMP / "as_of.txt")  # set before loop is imported; the judge started below follows it too. The checks below expect the periods of this as-of date, whatever as_of.txt says today
+(TMP / "as_of.txt").write_text("2025-12\n")
 sys.path.insert(0, str(ROOT))
 import loop  # noqa: E402  (imported after the path is set: loop.py lives in the repo root, not here)
 import store  # noqa: E402
 
 store.need()  # the judge and the agent sandbox read the data store
 loop.build()  # the judge runs every model in the model sandbox
-TMP = Path(tempfile.mkdtemp(prefix="test-loop-"))
 failures = 0
 
 
@@ -229,11 +233,11 @@ VALIDATION = ("val_mae", "win_pct", "bar_pct")
 
 loop.start()
 row = last_row()
-check("start: the full ledger has the columns issue #1 lists",
-      list(row) == ["turn", "idea", "practice_champion", "practice", "practice_wins",
+check("start: the full ledger has the columns issue #1 lists, and issue #4's as_of",
+      list(row) == ["turn", "as_of", "idea", "practice_champion", "practice", "practice_wins",
                     "val_mae", "win_pct", "bar_pct", "verdict", "lesson", "reply_check"], list(row))
-check("start: the baseline row has its practice score and its validation score",
-      cells(row, "turn", "practice", "val_mae", "verdict") == ["0", "5.656", "5.782", "start"], row)
+check("start: the baseline row has its as-of date, its practice score and its validation score",
+      cells(row, "turn", "as_of", "practice", "val_mae", "verdict") == ["0", "2025-12", "5.656", "5.782", "start"], row)
 
 agent_ledger = loop.AGENT_LEDGER.read_text().splitlines()
 check("agent's copy: three comment lines name the champion, the next bar and when to submit",
@@ -242,10 +246,10 @@ check("agent's copy: three comment lines name the champion, the next bar and whe
                            f"# To be judged, an idea must win at least {loop.SUBMIT_PCT}% of the practice reshuffles."],
       agent_ledger[:3])
 check("agent's copy: no validation column",
-      agent_ledger[3].split("\t") == ["turn", "idea", "practice_champion", "practice", "practice_wins", "verdict", "lesson"],
+      agent_ledger[3].split("\t") == ["turn", "as_of", "idea", "practice_champion", "practice", "practice_wins", "verdict", "lesson"],
       agent_ledger[3])
 check("agent's copy: the baseline row, without its validation score",
-      agent_ledger[4].split("\t") == ["0", "baseline: average of the last 7 days", "-", "5.656", "-", "start", "-"],
+      agent_ledger[4].split("\t") == ["0", "2025-12", "baseline: average of the last 7 days", "-", "5.656", "-", "start", "-"],
       agent_ledger[4])
 
 
@@ -404,7 +408,7 @@ check("dropped: the agent's own practice numbers can't get it judged",
 check("dropped: the bar stays where turn 12 left it", "Ideas judged: 2. The next must win 98.33%" in agent_ledger_top(), agent_ledger_top())
 
 
-# --- After 14 turns: nothing from the validation year has reached the agent ----------
+# --- After 14 turns: nothing from the validation period has reached the agent ----------
 
 full, agents = loop.LEDGER.read_text(), loop.AGENT_LEDGER.read_text()
 val_numbers = ["5.782", "2.915", "2.893", "67.91"]  # every validation score and win share the judge gave above
@@ -412,9 +416,9 @@ check("full ledger: holds the validation numbers", all(number in full for number
 check("agent's copy: holds none of them", not any(number in agents for number in val_numbers),
       [number for number in val_numbers if number in agents])
 check("agent's copy: one row per turn, with the verdicts",
-      [line.split("\t")[5] for line in agents.splitlines()[4:]] ==
+      [line.split("\t")[6] for line in agents.splitlines()[4:]] ==
       ["start", "KEPT", "dropped on practice"] + ["invalid reply"] * 6 + ["no change", "crashed", "crashed", "thrown away", "no change", "dropped on practice"],
-      [line.split("\t")[5] for line in agents.splitlines()[4:]])
+      [line.split("\t")[6] for line in agents.splitlines()[4:]])
 check("workspace: the ledger the agent reads is that copy, not the full ledger",
       seen["ledger"].splitlines()[3].split("\t") == loop.AGENT_COLUMNS and "67.91" not in seen["ledger"], seen["ledger"].splitlines()[3])
 

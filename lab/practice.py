@@ -1,5 +1,6 @@
-"""Scores two models on the practice year, Jul 2023 - Jun 2024, the way the judge scores its
-own year: walk forward a month at a time, then reshuffle the year's 52 weeks 10,000 times.
+"""Scores two models on the practice period, the newest 12 months at /data, the way the judge
+scores its own period: walk forward a month at a time, then reshuffle the period's 52 weeks
+10,000 times.
 
     python practice.py champion.py model.py
 
@@ -15,8 +16,10 @@ import pandas as pd
 
 pd.options.mode.copy_on_write = True  # as in the judge's sandbox: a model gets its history without a copy being made
 
-MONTHS = pd.date_range("2023-07-01", "2024-06-01", freq="MS")  # the practice year
-WEEKS = 52           # the year in 7-day blocks (the last block has 9 days: 366 = 51 x 7 + 9)
+# The practice period is the newest months at /data, this many of them. The judge counts the
+# same period back from the as-of date: this number is its PRACTICE_MONTHS. Change them together.
+PRACTICE_MONTHS = 12
+WEEKS = 52           # the period in 7-day blocks: 12 months are 365 or 366 days, so the last block has 8 or 9
 RESHUFFLES = 10_000  # how many times we re-deal the weeks
 
 
@@ -40,7 +43,7 @@ def daily_misses(model_file, data) -> np.ndarray:
     model writes to it, pandas copies what it writes to, so data itself never changes."""
     model = importlib.import_module(Path(model_file).stem)
     misses = []
-    for start in MONTHS:
+    for start in pd.date_range(end=data.date.max(), periods=PRACTICE_MONTHS, freq="MS"):  # the first day of each practice month
         month = data[(data.date >= start) & (data.date < start + pd.offsets.MonthBegin(1))]
         state = model.fit(data.iloc[:month.index[0]])  # every row before the month
         for i, day in zip(month.index, month.to_dict("records")):
@@ -53,7 +56,7 @@ def daily_misses(model_file, data) -> np.ndarray:
 
 
 def win_share(old, new) -> float:
-    """Re-deal the year's 52 weeks 10,000 times (some weeks twice, some not at all) and return
+    """Re-deal the period's 52 weeks 10,000 times (some weeks twice, some not at all) and return
     the share of re-deals in which the new model's average miss is the lower one.
     Whole weeks move together because neighbouring days share weather.
     This is the judge's own reshuffle, with the judge's seed."""
@@ -69,6 +72,6 @@ if __name__ == "__main__":
     data = read_data()
     old = daily_misses(champion_file, data)
     new = daily_misses(model_file, data)
-    print(f"champion_mae: {old.mean():.3f}   average miss of {champion_file} on the practice year, in MWh")
+    print(f"champion_mae: {old.mean():.3f}   average miss of {champion_file} on the practice period, in MWh")
     print(f"model_mae:    {new.mean():.3f}   average miss of {model_file}")
-    print(f"wins_pct:     {100 * win_share(old, new):.2f}   % of {RESHUFFLES:,} reshuffles of the practice year's weeks that {model_file} wins")
+    print(f"wins_pct:     {100 * win_share(old, new):.2f}   % of {RESHUFFLES:,} reshuffles of the practice period's weeks that {model_file} wins")

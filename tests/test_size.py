@@ -7,7 +7,8 @@ It builds a separate data store in a temporary folder (TOY_DATA points the store
 data/ is never touched): 20 years of days, 2006-01 to 2025-12, with 300 filler columns of
 random numbers. As one table that is 7,305 rows by 303 columns, about 18 MB. Then the real
 judge scores the baseline on the validation period in the real model sandbox, which starts
-with the 18.5 years before that period.
+with the 18.5 years before that period. The as-of date is held at 2025-12 in a temporary
+file (TOY_AS_OF).
 
 This is not a gigabyte test. The toy has one row per day, so it cannot reach the size of
 real data. It proves that a wide table gets through every step: the month folders, the
@@ -27,6 +28,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TMP = Path(tempfile.mkdtemp(prefix="test-size-"))
 os.environ["TOY_DATA"] = str(TMP / "data")  # set before store is imported; the scripts and the judge started below follow it too
+os.environ["TOY_AS_OF"] = str(TMP / "as_of.txt")  # the checks below expect the periods of this as-of date, whatever as_of.txt says today
+(TMP / "as_of.txt").write_text("2025-12\n")
 sys.path.insert(0, str(ROOT))
 import loop  # noqa: E402  (imported after the path is set: these files live in the repo root, not here)
 import store  # noqa: E402
