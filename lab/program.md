@@ -83,10 +83,13 @@ Your shell runs Python only: `python script.py` or `python -c "..."`.
 
 ## Rules
 1. One idea per turn, so we learn what helped.
-2. Don't retry an idea the ledger shows was thrown away unless you change it meaningfully.
+2. Don't retry an idea that was thrown away under the newest `as_of` in the ledger unless
+   you change it meaningfully. An idea thrown away under an older `as_of` may be tried
+   again as it was: the judge's months have changed since. It counts as a try like any other.
 3. If an idea won on practice but the judge threw it away, its gain is either real but too
    small to prove on the judge's period, or luck on the practice period. A near-copy is
-   scored on the same months, so it will most likely be thrown away too. Try a different idea.
+   scored on the same months until the next `advanced` row, so it will most likely be
+   thrown away too. Try a different idea.
 4. Keep `fit()` and `predict()` working the same way. numpy and pandas only.
    Don't read files inside model.py, `/data` included: `fit()` and `predict()` are handed
    the history, and that is all the data a model gets. The judge runs model.py in a locked
