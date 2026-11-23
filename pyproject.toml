@@ -23,6 +23,7 @@ dev = [
     # Runs the tests: `uv run pytest`.
     "pytest>=9.2.0",
     "ruff>=0.17.6",
+    "zizmor>=1.33.1",
 ]
 
 [tool.pyright]
