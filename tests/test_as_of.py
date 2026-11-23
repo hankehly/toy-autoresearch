@@ -565,7 +565,18 @@ def interrupted() -> None:
 
 
 def files_an_advance_writes(as_of_file) -> list[bytes]:
-    """Read the three files an advance writes: the as-of file and the two ledgers."""
+    """Read the three files an advance writes: the as-of file and the two ledgers.
+
+    Parameters
+    ----------
+    as_of_file : Path
+        The test file's as-of file.
+
+    Returns
+    -------
+    list[bytes]
+        The contents of the as-of file, the full ledger and the agent's copy, in that order.
+    """
     return [path.read_bytes() for path in (as_of_file, loop.LEDGER, loop.AGENT_LEDGER)]
 
 
