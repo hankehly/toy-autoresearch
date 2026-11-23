@@ -81,7 +81,9 @@ def write(month, days, folder=STORE) -> None:
     """
     path = folder / f"month={month}" / "part.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
-    unfinished = path.with_name("part.parquet.unfinished")
+    # The name starts with "_" because whoever reads a whole folder (Spark, or pandas with
+    # pd.read_parquet("/data")) skips such files. One left behind by a failed write is ignored.
+    unfinished = path.with_name("_part.parquet.unfinished")
     days.to_parquet(unfinished, index=False)
     unfinished.replace(path)  # one step, so no reader ever sees half a file
 

@@ -185,24 +185,58 @@ check("after ingest, the judge's scores are the same: nothing reads the new mont
 
 
 # --- A write that fails must not leave a month that looks finished ---------------------------
-# What a failed write could leave behind: a month folder with no finished file in it.
 
-(store.STORE / "month=2026-07").mkdir()
-(store.STORE / "month=2026-07" / "part.parquet.unfinished").write_bytes(b"half a file")
-check("a month folder without a finished file is not one of the store's months", store.months()[-1] == "2026-06", store.months()[-1])
+class DaysThatFailHalfway:
+    """Stands in for a month's days when the disk fills up: half a file is written, then the write fails."""
+
+    def to_parquet(self, path, index) -> None:
+        """Write half a file where a table would write its Parquet file, then fail.
+
+        Parameters
+        ----------
+        path : Path
+            Where store.write() asked for the file.
+        index : bool
+            Unused. A table's to_parquet() takes it.
+
+        Raises
+        ------
+        OSError
+            Always, as a full disk would.
+        """
+        Path(path).write_bytes(b"half a file")
+        raise OSError("No space left on device")
+
+
+def write_that_fails(month) -> None:
+    """Try to write a month to the store with a write that fails halfway.
+
+    Parameters
+    ----------
+    month : str
+        The month, written like "2026-07".
+    """
+    try:
+        store.write(month, DaysThatFailHalfway())
+    except OSError:
+        pass
+
+
+write_that_fails("2026-07")  # a month the store doesn't have yet
+check("a write that fails for a new month adds no month", store.months()[-1] == "2026-06", store.months()[-1])
 run("scripts/ingest.py", "--through", "2026-07")
 check("ingest completes such a month the next time",
       store.months()[-1] == "2026-07" and store.read(["2026-07"]).equals(store.read(["2026-07"], store.FUTURE)), store.months()[-1])
 
-december = store.read(["2025-12"])
-cannot_be_written = pd.DataFrame({"date": [1, "one"]})  # numbers and text in one column: Parquet refuses it
-for month in ("2025-12", "2030-01"):
-    try:
-        store.write(month, cannot_be_written)
-    except Exception:
-        pass
+december, every_day = store.read(["2025-12"]), store.read(store.months())
+write_that_fails("2025-12")  # a month the store has
 check("a write that fails over a month the store has leaves that month as it was", store.read(["2025-12"]).equals(december))
-check("a write that fails for a new month adds no month", "2030-01" not in store.months(), store.months()[-1])
+try:
+    whole_folder = len(pd.read_parquet(store.STORE))  # how lab/program.md tells the agent to read /data
+except Exception as error:
+    whole_folder = str(error).splitlines()[0][:80]
+check("after that failed write, the whole folder still reads as one table, the way the agent reads /data",
+      whole_folder == len(every_day), f"got {whole_folder!r}, expected {len(every_day)} days")
 
 
 # --- make_data.py with other settings: 2023-01 to 2025-12 are still the same days -----------
