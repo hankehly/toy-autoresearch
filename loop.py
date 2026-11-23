@@ -23,6 +23,7 @@ The data comes from the data store (store.py). `uv run scripts/make_data.py` bui
 The periods (training, practice, validation, holdout) are counted back from the as-of date,
 the one month in as_of.txt. The judge works them out: see periods() in judge.py.
 """
+
 import json
 import os
 import shutil
@@ -52,14 +53,36 @@ AS_OF = Path(os.environ.get("TOY_AS_OF") or ROOT / "as_of.txt")
 # measured on different months, so their scores can't be compared directly.
 LEDGER = ROOT / "ledger.tsv"
 AGENT_LEDGER = LAB / "ledger.tsv"
-COLUMNS = ["turn", "as_of", "idea", "practice_champion", "practice", "practice_wins",
-           "val_mae", "win_pct", "bar_pct", "verdict", "lesson", "reply_check"]
-AGENT_COLUMNS = ["turn", "as_of", "idea", "practice_champion", "practice", "practice_wins", "verdict", "lesson"]
+COLUMNS = [
+    "turn",
+    "as_of",
+    "idea",
+    "practice_champion",
+    "practice",
+    "practice_wins",
+    "val_mae",
+    "win_pct",
+    "bar_pct",
+    "verdict",
+    "lesson",
+    "reply_check",
+]
+AGENT_COLUMNS = [
+    "turn",
+    "as_of",
+    "idea",
+    "practice_champion",
+    "practice",
+    "practice_wins",
+    "verdict",
+    "lesson",
+]
 TRIED = ("KEPT", "thrown away")  # the verdicts that count as a try, so they raise the bar
-CHAMPIONS = ("start", "KEPT")    # the verdicts whose model became the champion
-ADVANCED = "advanced"            # the verdict of the row an advance adds: the champion, measured again. Not a turn, not a try
+CHAMPIONS = ("start", "KEPT")  # the verdicts whose model became the champion
+ADVANCED = "advanced"  # the verdict of the row an advance adds: the champion, measured again. Not a turn, not a try
 AGENT_FILES = ["program.md", "model.py", "check.py", "practice.py", "ledger.tsv"]
-IMAGES = ["model-sandbox", "agent-sandbox", "agent-proxy"]  # folders in docker/, each built as the Docker image toy-<name>
+# folders in docker/, each built as the Docker image toy-<name>
+IMAGES = ["model-sandbox", "agent-sandbox", "agent-proxy"]
 NETWORK = "toy-agent-net"  # the agent sandbox's network: its only way out is the proxy
 PROXY = "toy-agent-proxy"  # the proxy's container: squid, which lets through Claude's API alone
 
@@ -69,26 +92,38 @@ PROXY = "toy-agent-proxy"  # the proxy's container: squid, which lets through Cl
 REPLY_SCHEMA = {
     "type": "object",
     "properties": {
-        "idea": {"type": "string", "minLength": 3, "maxLength": 100,
-                 "description": "The idea you tried, in under 12 words"},
-        "lesson": {"type": "string", "minLength": 3, "maxLength": 300,
-                   "description": "One sentence: what this turn taught you"},
+        "idea": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 100,
+            "description": "The idea you tried, in under 12 words",
+        },
+        "lesson": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "description": "One sentence: what this turn taught you",
+        },
         "practice": {
             "description": "What practice.py printed for champion.py vs model.py, or null if you couldn't run it",
             "anyOf": [
-                {"type": "object",
-                 "properties": {
-                     "champion_mae": {"type": "number", "exclusiveMinimum": 0},
-                     "model_mae": {"type": "number", "exclusiveMinimum": 0},
-                     "wins_pct": {"type": "number", "minimum": 0, "maximum": 100},
-                 },
-                 "required": ["champion_mae", "model_mae", "wins_pct"],
-                 "additionalProperties": False},
+                {
+                    "type": "object",
+                    "properties": {
+                        "champion_mae": {"type": "number", "exclusiveMinimum": 0},
+                        "model_mae": {"type": "number", "exclusiveMinimum": 0},
+                        "wins_pct": {"type": "number", "minimum": 0, "maximum": 100},
+                    },
+                    "required": ["champion_mae", "model_mae", "wins_pct"],
+                    "additionalProperties": False,
+                },
                 {"type": "null"},
             ],
         },
-        "submit": {"type": "boolean",
-                   "description": "true asks for model.py to be judged; false logs it as dropped on practice"},
+        "submit": {
+            "type": "boolean",
+            "description": "true asks for model.py to be judged; false logs it as dropped on practice",
+        },
     },
     "required": ["idea", "lesson", "practice", "submit"],
     "additionalProperties": False,
@@ -104,21 +139,36 @@ SUBMIT_PCT = 90
 
 # The steps of a turn are in program.md, the brief you edit.
 PROMPT = "Read program.md and follow its steps. Finish with the structured reply."
-AGENT = ["timeout", "1800",                         # a turn still running after 30 minutes is stopped
-         "claude", "-p", PROMPT,
-         "--model", "sonnet",
-         "--permission-mode", "acceptEdits",            # may edit files in its own workspace only
-         "--allowedTools", "Bash(python *),Bash(python3 *)",  # and run python; anything else is refused
-         "--disallowedTools", "WebSearch,WebFetch",     # no web tools: its only sources are the lab files
-         "--output-format", "json",
-         "--json-schema", json.dumps(REPLY_SCHEMA)]     # the reply's shape; it comes back as "structured_output"
+# the reply's shape; it comes back as "structured_output"
+AGENT = [
+    "timeout",
+    "1800",  # a turn still running after 30 minutes is stopped
+    "claude",
+    "-p",
+    PROMPT,
+    "--model",
+    "sonnet",
+    "--permission-mode",
+    "acceptEdits",  # may edit files in its own workspace only
+    "--allowedTools",
+    "Bash(python *),Bash(python3 *)",  # and run python; anything else is refused
+    "--disallowedTools",
+    "WebSearch,WebFetch",  # no web tools: its only sources are the lab files
+    "--output-format",
+    "json",
+    "--json-schema",
+    json.dumps(REPLY_SCHEMA),
+]
 
 
 def build() -> None:
     """Build the three Docker images. Quick when nothing has changed: Docker reuses its cache."""
     for name in IMAGES:
-        subprocess.run(["docker", "build", "--quiet", "-t", f"toy-{name}", str(ROOT / "docker" / name)],
-                       check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(
+            ["docker", "build", "--quiet", "-t", f"toy-{name}", str(ROOT / "docker" / name)],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
 
 
 def need_login_token() -> None:
@@ -127,10 +177,12 @@ def need_login_token() -> None:
     (Your Mac keeps its own Claude login in the Keychain, which a container can't use.)
     """
     if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
-        sys.exit("The agent sandbox needs a Claude login token. In your shell, run:\n"
-                 "    claude setup-token\n"
-                 "    export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>\n"
-                 "then run this command again.")
+        sys.exit(
+            "The agent sandbox needs a Claude login token. In your shell, run:\n"
+            "    claude setup-token\n"
+            "    export CLAUDE_CODE_OAUTH_TOKEN=<the token it prints>\n"
+            "then run this command again."
+        )
 
 
 def start_proxy() -> None:
@@ -142,14 +194,26 @@ def start_proxy() -> None:
 
         docker exec toy-agent-proxy cat /var/log/squid/access.log
     """
-    subprocess.run(["docker", "rm", "--force", PROXY], capture_output=True)  # remove an old proxy, if any
-    subprocess.run(["docker", "network", "rm", NETWORK], capture_output=True)  # and an old network, however it was made
-    subprocess.run(["docker", "network", "create", "--internal", NETWORK],  # --internal: no way out of it but the proxy
-                   check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["docker", "run", "--detach", "--name", PROXY, "--network", NETWORK, "toy-agent-proxy"],
-                   check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["docker", "network", "connect", "bridge", PROXY], check=True)  # the proxy's other side: the internet
-    for _ in range(50):  # wait up to 5 seconds for squid to start listening (it takes about half a second)
+    # remove an old proxy, if any
+    subprocess.run(["docker", "rm", "--force", PROXY], capture_output=True)
+    # and an old network, however it was made
+    subprocess.run(["docker", "network", "rm", NETWORK], capture_output=True)
+    # --internal: no way out of it but the proxy
+    subprocess.run(
+        ["docker", "network", "create", "--internal", NETWORK],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["docker", "run", "--detach", "--name", PROXY, "--network", NETWORK, "toy-agent-proxy"],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    # the proxy's other side: the internet
+    subprocess.run(["docker", "network", "connect", "bridge", PROXY], check=True)
+    for _ in range(
+        50
+    ):  # wait up to 5 seconds for squid to start listening (it takes about half a second)
         logs = subprocess.run(["docker", "logs", PROXY], capture_output=True, text=True)
         if "Accepting HTTP Socket connections" in logs.stdout + logs.stderr:
             return
@@ -218,10 +282,18 @@ def brief() -> str:
     """
     found = periods()
     months = found["training"] + found["practice"]  # the agent's months
-    return (LAB / "program.md").read_text().format(
-        data_first=months[0], data_last=months[-1],
-        practice_first=found["practice"][0], practice_last=found["practice"][-1],
-        practice_months=len(found["practice"]), validation_months=len(found["val"]))
+    return (
+        (LAB / "program.md")
+        .read_text()
+        .format(
+            data_first=months[0],
+            data_last=months[-1],
+            practice_first=found["practice"][0],
+            practice_last=found["practice"][-1],
+            practice_months=len(found["practice"]),
+            validation_months=len(found["val"]),
+        )
+    )
 
 
 def agent_sandbox(work) -> list[str]:
@@ -230,14 +302,25 @@ def agent_sandbox(work) -> list[str]:
     The sandbox sees only the turn's workspace and the agent's months of the data store, and
     its only way out is the proxy.
     """
-    return ["docker", "run", "--rm", "--pull", "never",
-            "--network", NETWORK,                                  # no internet, except through the proxy
-            "-e", f"HTTPS_PROXY=http://{PROXY}:3128",              # so Claude Code sends its requests to the proxy
-            "-e", "CLAUDE_CODE_OAUTH_TOKEN",                       # your login token, passed on by name from your shell
-            "-e", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",    # no update checks or error reports
-            "-v", f"{work}:/work",                                 # the turn's workspace: the only folder it can change
-            *store.mounts(agent_months()),                         # the agent's months, read-only at /data
-            "toy-agent-sandbox"]
+    return [
+        "docker",
+        "run",
+        "--rm",
+        "--pull",
+        "never",
+        "--network",
+        NETWORK,  # no internet, except through the proxy
+        "-e",
+        f"HTTPS_PROXY=http://{PROXY}:3128",  # so Claude Code sends its requests to the proxy
+        "-e",
+        "CLAUDE_CODE_OAUTH_TOKEN",  # your login token, passed on by name from your shell
+        "-e",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",  # no update checks or error reports
+        "-v",
+        f"{work}:/work",  # the turn's workspace: the only folder it can change
+        *store.mounts(agent_months()),  # the agent's months, read-only at /data
+        "toy-agent-sandbox",
+    ]
 
 
 def run_agent(work) -> dict:
@@ -266,10 +349,12 @@ def check_reply(reported, measured) -> str:
     if reported is None:
         return "not run"  # the agent says it couldn't run practice.py
     if measured is None:
-        return "-"        # nothing to compare with
-    gaps = (abs(reported["champion_mae"] - measured["champion_mae"]),  # in MWh
-            abs(reported["model_mae"] - measured["candidate_mae"]))
-    wins_gap = abs(reported["wins_pct"] - measured["win_pct"])         # in points
+        return "-"  # nothing to compare with
+    gaps = (
+        abs(reported["champion_mae"] - measured["champion_mae"]),  # in MWh
+        abs(reported["model_mae"] - measured["candidate_mae"]),
+    )
+    wins_gap = abs(reported["wins_pct"] - measured["win_pct"])  # in points
     # rounded, so floating-point error can't push a gap of exactly 0.001 over the line
     if round(max(gaps), 6) > 0.001 or round(wins_gap, 6) > 0.1:
         return "practice mismatch"
@@ -303,8 +388,12 @@ def judge(*args) -> dict:
         What the judge printed, a JSON object. If the judge failed, `{"error": ...}` with
         the last line of its error text.
     """
-    run = subprocess.run([sys.executable, str(JUDGE / "judge.py"), *map(str, args)],
-                         capture_output=True, text=True, timeout=900)
+    run = subprocess.run(
+        [sys.executable, str(JUDGE / "judge.py"), *map(str, args)],
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
     if run.returncode != 0:
         lines = run.stderr.strip().splitlines()
         return {"error": lines[-1] if lines else "judge failed"}
@@ -341,11 +430,15 @@ def log(turn, idea, verdict, **cells) -> None:
     the as-of date it was measured under.
     """
     cells = {"turn": turn, "as_of": as_of(), "idea": idea, "verdict": verdict, **cells}
-    row = {c: " ".join(str(cells.get(c, "-")).split()) or "-" for c in COLUMNS}  # one line of text per cell, no tabs
+    # one line of text per cell, no tabs
+    row = {c: " ".join(str(cells.get(c, "-")).split()) or "-" for c in COLUMNS}
     with LEDGER.open("a") as f:
         f.write("\t".join(row.values()) + "\n")
-    print(f"turn {turn}: {row['idea']} | practice {row['practice_champion']} -> {row['practice']}, won {row['practice_wins']}%"
-          f" | validation MAE {row['val_mae']}, won {row['win_pct']}% (needed {row['bar_pct']}%) | {verdict}", flush=True)
+    print(
+        f"turn {turn}: {row['idea']} | practice {row['practice_champion']} -> {row['practice']}, won {row['practice_wins']}%"
+        f" | validation MAE {row['val_mae']}, won {row['win_pct']}% (needed {row['bar_pct']}%) | {verdict}",
+        flush=True,
+    )
     write_agent_ledger()
 
 
@@ -362,10 +455,12 @@ def write_agent_ledger() -> None:
     # the champion's newest practice score: after an advance, the one in the advance's row
     measured = [r for r in rows if r["verdict"] in (*CHAMPIONS, ADVANCED)][-1]
     bar_pct = judge("bar", ideas_judged() + 1)["bar_pct"]
-    lines = [f"# Champion: turn {champion['turn']}, practice {measured['practice']} MWh",
-             f"# Ideas judged: {ideas_judged()}. The next must win {bar_pct}% of the judge's reshuffles.",
-             f"# To be judged, an idea must win at least {SUBMIT_PCT}% of the practice reshuffles.",
-             "\t".join(AGENT_COLUMNS)]
+    lines = [
+        f"# Champion: turn {champion['turn']}, practice {measured['practice']} MWh",
+        f"# Ideas judged: {ideas_judged()}. The next must win {bar_pct}% of the judge's reshuffles.",
+        f"# To be judged, an idea must win at least {SUBMIT_PCT}% of the practice reshuffles.",
+        "\t".join(AGENT_COLUMNS),
+    ]
     lines += ["\t".join(r[c] for c in AGENT_COLUMNS) for r in rows]
     AGENT_LEDGER.write_text("\n".join(lines) + "\n")
 
@@ -400,7 +495,13 @@ def start() -> None:
     HISTORY.mkdir(exist_ok=True)
     shutil.copy(LAB / "model.py", HISTORY / "turn_0.py")
     LEDGER.write_text("\t".join(COLUMNS) + "\n")
-    log(0, "baseline: average of the last 7 days", "start", practice=scores["practice"], val_mae=scores["val"])
+    log(
+        0,
+        "baseline: average of the last 7 days",
+        "start",
+        practice=scores["practice"],
+        val_mae=scores["val"],
+    )
 
 
 def turn(t) -> None:
@@ -421,23 +522,28 @@ def turn(t) -> None:
     # 3. bring back model.py, delete the workspace, and save the turn in history/
     candidate = HISTORY / f"turn_{t}.py"
     if not copy_submission(work, candidate):  # only model.py comes back
-        shutil.copy(champion, candidate)      # no plain model.py: the same as changing nothing
+        shutil.copy(champion, candidate)  # no plain model.py: the same as changing nothing
     shutil.rmtree(work)
     # the whole response, not picked fields: a run that fails has "errors" where "result" would be
-    (HISTORY / f"turn_{t}.json").write_text(json.dumps({
-        "seconds": round(time.time() - began), "response": result}, indent=2))
+    (HISTORY / f"turn_{t}.json").write_text(
+        json.dumps({"seconds": round(time.time() - began), "response": result}, indent=2)
+    )
 
     # the loop measures practice itself, so the ledger never depends on the agent's own numbers
     changed = candidate.read_bytes() != champion.read_bytes()
-    measured, crashed = None, False  # the loop's practice numbers; None if model.py didn't change or didn't run
+    # the loop's practice numbers; None if model.py didn't change or didn't run
+    measured, crashed = None, False
     if changed:
         measured = judge("practice", champion, candidate)
         if "error" in measured:
             measured, crashed = None, True
     row = {}  # the row's cells so far
     if measured:
-        row = {"practice_champion": measured["champion_mae"], "practice": measured["candidate_mae"],
-               "practice_wins": measured["win_pct"]}
+        row = {
+            "practice_champion": measured["champion_mae"],
+            "practice": measured["candidate_mae"],
+            "practice_wins": measured["win_pct"],
+        }
 
     # the verdicts that never reach the judge. None of them counts as a try, so the bar stays put
     if not valid:
@@ -467,8 +573,15 @@ def turn(t) -> None:
         return
     if judged["keep"]:
         shutil.copy(candidate, champion)
-    log(t, idea, "KEPT" if judged["keep"] else "thrown away",
-        val_mae=judged["candidate_mae"], win_pct=judged["win_pct"], bar_pct=judged["bar_pct"], **row)
+    log(
+        t,
+        idea,
+        "KEPT" if judged["keep"] else "thrown away",
+        val_mae=judged["candidate_mae"],
+        win_pct=judged["win_pct"],
+        bar_pct=judged["bar_pct"],
+        **row,
+    )
 
 
 def advance() -> None:
@@ -492,20 +605,35 @@ def advance() -> None:
     """
     old, new = as_of(), store.months()[-1]
     if new <= old:
-        sys.exit(f"Nothing to advance to: the as-of date is {old}, and the data store's newest month is {new}.")
+        sys.exit(
+            f"Nothing to advance to: the as-of date is {old}, and the data store's newest month is {new}."
+        )
     if not LEDGER.exists():
         start()  # as `run` does: the baseline's row records the as-of date the research started under
-    before = {path: path.read_bytes() for path in (AS_OF, LEDGER, AGENT_LEDGER)}  # the three files an advance writes
+    # the three files an advance writes
+    before = {path: path.read_bytes() for path in (AS_OF, LEDGER, AGENT_LEDGER)}
     try:
         AS_OF.write_text(new + "\n")  # first, because the judge reads the as-of date from this file
         found = periods()
         scores = champion_scores()
-        print(f"as-of date {old} -> {new}: " + ", ".join(
-            f"{period} {found[period][0]} to {found[period][-1]}" for period in ("training", "practice", "val", "holdout")))
+        print(
+            f"as-of date {old} -> {new}: "
+            + ", ".join(
+                f"{period} {found[period][0]} to {found[period][-1]}"
+                for period in ("training", "practice", "val", "holdout")
+            )
+        )
         champion = [r for r in read_ledger() if r["verdict"] in CHAMPIONS][-1]
-        log("-", f"as-of date advanced from {old} to {new}: the champion (turn {champion['turn']}) measured again", ADVANCED,
-            practice=scores["practice"], val_mae=scores["val"])
-    except BaseException:  # the champion can't be measured, a timeout or Ctrl-C: put all three files back as they were
+        log(
+            "-",
+            f"as-of date advanced from {old} to {new}: the champion (turn {champion['turn']}) measured again",
+            ADVANCED,
+            practice=scores["practice"],
+            val_mae=scores["val"],
+        )
+    except (
+        BaseException
+    ):  # the champion can't be measured, a timeout or Ctrl-C: put all three files back as they were
         for path, content in before.items():
             path.write_bytes(content)
         print(f"Not advanced: the as-of date is still {old}.", file=sys.stderr)
@@ -520,14 +648,20 @@ def holdout() -> None:
     validation period: the val_mae in an old ledger row may come from other months.
     """
     found = periods()
-    print(f"as-of date {found['as_of']}: validation is {found['val'][0]} to {found['val'][-1]}, "
-          f"holdout is {found['holdout'][0]} to {found['holdout'][-1]}")
+    print(
+        f"as-of date {found['as_of']}: validation is {found['val'][0]} to {found['val'][-1]}, "
+        f"holdout is {found['holdout'][0]} to {found['holdout'][-1]}"
+    )
     print(f"{'model':<58}{'val':>6}{'holdout':>9}")
     for r in read_ledger():
         if r["verdict"] in CHAMPIONS:
             model = HISTORY / f"turn_{r['turn']}.py"
-            val_mae, holdout_mae = (judge("score", period, model)["mae"] for period in ("val", "holdout"))
-            print(f"{'turn ' + r['turn'] + ': ' + r['idea']:<58.58}{val_mae:>6.2f}{holdout_mae:>9.2f}")
+            val_mae, holdout_mae = (
+                judge("score", period, model)["mae"] for period in ("val", "holdout")
+            )
+            print(
+                f"{'turn ' + r['turn'] + ': ' + r['idea']:<58.58}{val_mae:>6.2f}{holdout_mae:>9.2f}"
+            )
 
 
 def reset() -> None:

@@ -10,6 +10,7 @@ A sandbox sees the month folders that mounts() gives it, read-only at /data, and
 
 data/ is not in git. `uv run scripts/make_data.py` builds it.
 """
+
 import os
 import sys
 from pathlib import Path
@@ -18,7 +19,7 @@ import pandas as pd
 
 # TOY_DATA names a different data folder. The tests use it to work on a temporary store.
 DATA = Path(os.environ.get("TOY_DATA") or Path(__file__).parent / "data").resolve()
-STORE = DATA / "store"    # the months that have arrived: all the data the research can use
+STORE = DATA / "store"  # the months that have arrived: all the data the research can use
 FUTURE = DATA / "future"  # the pretend future. Only scripts/ingest.py reads it
 
 
@@ -36,7 +37,9 @@ def months(folder=STORE) -> list[str]:
         The months, oldest first, written like "2023-01". A month folder counts only once
         its file is finished, so a write that failed halfway leaves no month behind.
     """
-    return sorted(path.parent.name.removeprefix("month=") for path in folder.glob("month=*/part.parquet"))
+    return sorted(
+        path.parent.name.removeprefix("month=") for path in folder.glob("month=*/part.parquet")
+    )
 
 
 def read(months, folder=STORE) -> pd.DataFrame:
@@ -104,7 +107,10 @@ def mounts(months) -> list[str]:
     """
     arguments = []
     for month in months:
-        arguments += ["--mount", f"type=bind,source={STORE / f'month={month}'},target=/data/month={month},readonly"]
+        arguments += [
+            "--mount",
+            f"type=bind,source={STORE / f'month={month}'},target=/data/month={month},readonly",
+        ]
     return arguments
 
 

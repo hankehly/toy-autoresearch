@@ -23,6 +23,7 @@ ledger records a measurement the agent can't touch.
 
 The data comes from the data store (store.py). `uv run scripts/make_data.py` builds it.
 """
+
 import json
 import os
 import subprocess
@@ -40,9 +41,9 @@ import store  # imported after the path is set: store.py lives in the repo root,
 AS_OF = Path(os.environ.get("TOY_AS_OF") or Path(__file__).resolve().parent.parent / "as_of.txt")
 
 # How long each period is, in months. periods() counts them back from the as-of date.
-HOLDOUT_MONTHS = 6      # the newest months: scored once, at the end
+HOLDOUT_MONTHS = 6  # the newest months: scored once, at the end
 VALIDATION_MONTHS = 12  # the months before those: they decide what's kept
-PRACTICE_MONTHS = 12    # the months before those: the agent's own, it has these answers
+PRACTICE_MONTHS = 12  # the months before those: the agent's own, it has these answers
 # Every earlier month in the store is the training period.
 
 # A scored period in 7-day blocks. Any 12 months are 365 or 366 days, which is 51 blocks of
@@ -75,7 +76,11 @@ def periods() -> dict[str, list[str]]:
     """
     as_of = pd.Period(AS_OF.read_text().strip(), "M")
     found, last = {}, as_of
-    for name, length in [("holdout", HOLDOUT_MONTHS), ("val", VALIDATION_MONTHS), ("practice", PRACTICE_MONTHS)]:
+    for name, length in [
+        ("holdout", HOLDOUT_MONTHS),
+        ("val", VALIDATION_MONTHS),
+        ("practice", PRACTICE_MONTHS),
+    ]:
         found[name] = [str(month) for month in pd.period_range(end=last, periods=length, freq="M")]
         last -= length  # the next period back ends just before this one starts
     stored = store.months()
@@ -83,9 +88,12 @@ def periods() -> dict[str, list[str]]:
     if stored[-1] < str(as_of):
         sys.exit(f"The data store ends at {stored[-1]}, before the as-of date, {as_of}.")
     if not found["training"]:
-        sys.exit(f"The data store has no month before the practice period, {found['practice'][0]} to "
-                 f"{found['practice'][-1]}, so a model would have nothing to learn from. The as-of date is {as_of}.")
-    return {name: found[name] for name in ("training", "practice", "val", "holdout")}  # oldest period first
+        sys.exit(
+            f"The data store has no month before the practice period, {found['practice'][0]} to "
+            f"{found['practice'][-1]}, so a model would have nothing to learn from. The as-of date is {as_of}."
+        )
+    # oldest period first
+    return {name: found[name] for name in ("training", "practice", "val", "holdout")}
 
 
 def open_model_sandbox(model_path, period) -> subprocess.Popen:
@@ -106,17 +114,39 @@ def open_model_sandbox(model_path, period) -> subprocess.Popen:
         The running sandbox. The judge talks to it through stdin and stdout.
     """
     first_scored = periods()[period][0]
-    return subprocess.Popen([
-        "docker", "run", "--rm", "-i", "--pull", "never",
-        "--network", "none",                                          # no internet
-        "--read-only", "--tmpfs", "/tmp",                             # can't change any file; /tmp vanishes afterwards
-        "--user", "65534:65534",                                      # runs as "nobody", not as you
-        "--cap-drop", "ALL", "--security-opt", "no-new-privileges",  # can't give itself extra powers
-        "--cpus", "2", "--pids-limit", "64",                          # can't hog your Mac's processors (no memory cap: real data is big)
-        "-v", f"{Path(model_path).resolve()}:/sandbox/model.py:ro",   # its one file of code, read-only
-        *store.mounts([month for month in store.months() if month < first_scored]),  # its history, read-only at /data
-        "toy-model-sandbox",
-    ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    return subprocess.Popen(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-i",
+            "--pull",
+            "never",
+            "--network",
+            "none",  # no internet
+            "--read-only",
+            "--tmpfs",
+            "/tmp",  # can't change any file; /tmp vanishes afterwards
+            "--user",
+            "65534:65534",  # runs as "nobody", not as you
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",  # can't give itself extra powers
+            "--cpus",
+            "2",
+            "--pids-limit",
+            "64",  # can't hog your Mac's processors (no memory cap: real data is big)
+            "-v",
+            f"{Path(model_path).resolve()}:/sandbox/model.py:ro",  # its one file of code, read-only
+            # its history, read-only at /data
+            *store.mounts([month for month in store.months() if month < first_scored]),
+            "toy-model-sandbox",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
 
 
 def send(sandbox, message) -> None:
@@ -227,7 +257,11 @@ if __name__ == "__main__":
     store.need()
     if sys.argv[1] == "score":
         period, path = sys.argv[2], sys.argv[3]
-        print(json.dumps({"period": period, "mae": round(float(daily_misses(path, period).mean()), 3)}))
+        print(
+            json.dumps(
+                {"period": period, "mae": round(float(daily_misses(path, period).mean()), 3)}
+            )
+        )
     elif sys.argv[1] == "compare":
         print(json.dumps(compare(sys.argv[2], sys.argv[3], int(sys.argv[4]))))
     elif sys.argv[1] == "practice":

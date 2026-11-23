@@ -14,6 +14,7 @@ This is not a gigabyte test. The toy has one row per day, so it cannot reach the
 real data. It proves that a wide table gets through every step: the month folders, the
 mounts, the runner and the messages. About 30 seconds.
 """
+
 import json
 import subprocess
 import sys
@@ -45,6 +46,7 @@ def run(*command) -> subprocess.CompletedProcess:
 
 # --- A separate store: 20 years, 300 filler columns -----------------------------------------
 
+
 @pytest.fixture(scope="module")
 def wide_store() -> subprocess.CompletedProcess:
     """Fill the test file's data folder with a long, wide store: make_data.py --start 2006-01 --filler 300.
@@ -74,7 +76,7 @@ def test_the_store_is_one_table_of_7305_days_by_303_columns_about_18_mb(wide_sto
 # The baseline is the 7-day average. This one also checks what it is handed: a model that
 # got a narrower table, a shorter history or fewer of today's columns would crash, not score.
 
-BASELINE_THAT_CHECKS_WHAT_IT_GETS = '''
+BASELINE_THAT_CHECKS_WHAT_IT_GETS = """
 import pandas as pd
 
 
@@ -88,10 +90,12 @@ def predict(state, history, today) -> float:
     assert len(today) == 302 and "filler_300" in today and "load" not in today, f"today has {len(today)} columns"
     assert history["date"].iloc[-1] == today["date"] - pd.Timedelta(days=1), "history doesn't end yesterday"
     return history["load"].tail(7).mean()
-'''
+"""
 
 
-def test_the_judge_scores_the_baseline_on_the_validation_period_with_every_column_reaching_the_model(wide_store, tmp_path):
+def test_the_judge_scores_the_baseline_on_the_validation_period_with_every_column_reaching_the_model(
+    wide_store, tmp_path
+):
     model = tmp_path / "model.py"
     model.write_text(BASELINE_THAT_CHECKS_WHAT_IT_GETS)
 
@@ -103,4 +107,6 @@ def test_the_judge_scores_the_baseline_on_the_validation_period_with_every_colum
     # 2023-01 to 2025-12 are the toy's own days whatever the settings, and the baseline reads only
     # the last 7 loads, so its score is the one in ledger.tsv: 5.782.
     assert json.loads(scored.stdout)["mae"] == 5.782
-    print(f"\nTIME  scoring the validation period (one year) took {seconds:.1f} seconds: 365 predictions, each with a history of about 6,900 rows by 303 columns")
+    print(
+        f"\nTIME  scoring the validation period (one year) took {seconds:.1f} seconds: 365 predictions, each with a history of about 6,900 rows by 303 columns"
+    )

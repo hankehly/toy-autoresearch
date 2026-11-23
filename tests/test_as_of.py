@@ -13,6 +13,7 @@ would: make_data.py, a turn, six months arrive, an advance, a turn, one more mon
 another advance, a turn, the holdout, a reset. Each step is a fixture that asks for the step
 before it and records what it saw, so a test reads its step's record and can run alone.
 """
+
 import contextlib
 import io
 import json
@@ -47,8 +48,12 @@ def run(*command) -> subprocess.CompletedProcess:
     subprocess.CompletedProcess
         The finished run, with what it printed.
     """
-    no_token = {name: value for name, value in os.environ.items() if name != "CLAUDE_CODE_OAUTH_TOKEN"}
-    return subprocess.run([sys.executable, *command], cwd=ROOT, env=no_token, capture_output=True, text=True)
+    no_token = {
+        name: value for name, value in os.environ.items() if name != "CLAUDE_CODE_OAUTH_TOKEN"
+    }
+    return subprocess.run(
+        [sys.executable, *command], cwd=ROOT, env=no_token, capture_output=True, text=True
+    )
 
 
 def periods() -> dict:
@@ -64,7 +69,10 @@ def periods() -> dict:
     if printed.returncode != 0:
         return {"stopped": printed.stderr.strip()}
     found = json.loads(printed.stdout)
-    return {name: months if name == "as_of" else (months[0], months[-1], len(months)) for name, months in found.items()}
+    return {
+        name: months if name == "as_of" else (months[0], months[-1], len(months))
+        for name, months in found.items()
+    }
 
 
 def score(period, model_path) -> float | None:
@@ -82,20 +90,22 @@ def score(period, model_path) -> float | None:
     float or None
         Its average miss in MWh, or None if the judge printed no score.
     """
-    return json.loads(run("judge/judge.py", "score", period, str(model_path)).stdout or "{}").get("mae")
+    return json.loads(run("judge/judge.py", "score", period, str(model_path)).stdout or "{}").get(
+        "mae"
+    )
 
 
 # Turns 0, 1 and 3 of the example run, as in tests/test_loop.py.
-BASELINE = '''
+BASELINE = """
 def fit(history) -> None:
     return None
 
 
 def predict(state, history, today) -> float:
     return history["load"].tail(7).mean()
-'''
+"""
 
-REGRESSION = '''
+REGRESSION = """
 import numpy as np
 import pandas as pd
 
@@ -116,9 +126,9 @@ def fit(history) -> np.ndarray:
 def predict(state, history, today) -> float:
     X = _features([today["date"]], [today["temp_forecast"]])
     return float(X[0] @ state)
-'''
+"""
 
-WITH_YESTERDAY = '''
+WITH_YESTERDAY = """
 import numpy as np
 import pandas as pd
 
@@ -144,19 +154,19 @@ def predict(state, history, today) -> float:
     prev = history["temp_forecast"].iloc[-1] if len(history) else today["temp_forecast"]
     X = _features([today["date"]], [today["temp_forecast"]], [prev])
     return float(X[0] @ state)
-'''
+"""
 
-CRASHES = '''
+CRASHES = """
 def fit(history) -> None:
     raise ValueError("this model can't be measured")
 
 
 def predict(state, history, today) -> float:
     return 100.0
-'''
+"""
 
 # This model says which is its newest month, as its guess: month=2024-06 comes back as 202406.
-NAMES_ITS_NEWEST_MONTH = '''
+NAMES_ITS_NEWEST_MONTH = """
 import os
 
 
@@ -166,7 +176,7 @@ def fit(history) -> None:
 
 def predict(state, history, today) -> float:
     return float(max(os.listdir("/data")).removeprefix("month=").replace("-", ""))
-'''
+"""
 
 
 @pytest.fixture(scope="module")
@@ -185,7 +195,11 @@ def models(tmp_path_factory) -> dict[str, Path]:
     """
     folder = tmp_path_factory.mktemp("models")
     paths = {}
-    for name, code in [("baseline", BASELINE), ("regression", REGRESSION), ("newest", NAMES_ITS_NEWEST_MONTH)]:
+    for name, code in [
+        ("baseline", BASELINE),
+        ("regression", REGRESSION),
+        ("newest", NAMES_ITS_NEWEST_MONTH),
+    ]:
         paths[name] = folder / f"{name}.py"
         paths[name].write_text(code)
     return paths
@@ -203,10 +217,20 @@ EXPECTED = {
 
 # The table in issue #4: each period's first month, last month and number of months.
 PERIODS = {
-    "2025-12": {"as_of": "2025-12", "training": ("2023-01", "2023-06", 6), "practice": ("2023-07", "2024-06", 12),
-                "val": ("2024-07", "2025-06", 12), "holdout": ("2025-07", "2025-12", 6)},
-    "2026-06": {"as_of": "2026-06", "training": ("2023-01", "2023-12", 12), "practice": ("2024-01", "2024-12", 12),
-                "val": ("2025-01", "2025-12", 12), "holdout": ("2026-01", "2026-06", 6)},
+    "2025-12": {
+        "as_of": "2025-12",
+        "training": ("2023-01", "2023-06", 6),
+        "practice": ("2023-07", "2024-06", 12),
+        "val": ("2024-07", "2025-06", 12),
+        "holdout": ("2025-07", "2025-12", 6),
+    },
+    "2026-06": {
+        "as_of": "2026-06",
+        "training": ("2023-01", "2023-12", 12),
+        "practice": ("2024-01", "2024-12", 12),
+        "val": ("2025-01", "2025-12", 12),
+        "holdout": ("2026-01", "2026-06", 6),
+    },
 }
 
 
@@ -223,8 +247,11 @@ def test_no_written_out_date_in_loop_py_judge_lab_or_docker():
     searched = [ROOT / "loop.py"]
     for folder in ("judge", "lab", "docker"):
         # the code, the brief and the sandboxes' files. Nothing else: a stray file that isn't text would stop the search
-        searched += [path for path in sorted((ROOT / folder).rglob("*"))
-                     if path.suffix in (".py", ".md", ".conf") or path.name == "Dockerfile"]
+        searched += [
+            path
+            for path in sorted((ROOT / folder).rglob("*"))
+            if path.suffix in (".py", ".md", ".conf") or path.name == "Dockerfile"
+        ]
     dates_found = []
     for path in searched:
         for number, line in enumerate(path.read_text().splitlines(), 1):
@@ -234,10 +261,14 @@ def test_no_written_out_date_in_loop_py_judge_lab_or_docker():
 
 
 def test_the_search_itself_finds_a_year_a_month_beside_a_year_and_two_months_side_by_side():
-    assert all(WRITTEN_DATE.search(text) for text in ("through 2024-06", "Jul 2023", "Jan-Jun", "July - December"))
+    assert all(
+        WRITTEN_DATE.search(text)
+        for text in ("through 2024-06", "Jul 2023", "Jan-Jun", "July - December")
+    )
 
 
 # --- As-of date 2025-12: the periods are the ones the code used to list, so no score changes ---
+
 
 @pytest.fixture(scope="module")
 def made() -> subprocess.CompletedProcess:
@@ -268,9 +299,13 @@ def at_2025_12(made, models) -> dict:
         "periods", what `judge.py periods` printed, and "scores": for "baseline" and
         "regression", the practice, validation and holdout scores.
     """
-    return {"periods": periods(),
-            "scores": {name: tuple(score(period, models[name]) for period in ("practice", "val", "holdout"))
-                       for name in ("baseline", "regression")}}
+    return {
+        "periods": periods(),
+        "scores": {
+            name: tuple(score(period, models[name]) for period in ("practice", "val", "holdout"))
+            for name in ("baseline", "regression")
+        },
+    }
 
 
 def test_make_data_py_fills_a_temporary_store(made):
@@ -282,11 +317,14 @@ def test_as_of_2025_12_the_periods_are_the_first_column_of_the_issues_table(at_2
 
 
 @pytest.mark.parametrize("name", ["baseline", "regression"])
-def test_as_of_2025_12_the_model_scores_as_it_always_has_on_practice_validation_and_holdout(name, at_2025_12):
+def test_as_of_2025_12_the_model_scores_as_it_always_has_on_practice_validation_and_holdout(
+    name, at_2025_12
+):
     assert at_2025_12["scores"][name] == EXPECTED["2025-12"][name]
 
 
 # --- The judge stops when the store can't fill the periods -------------------------------
+
 
 @pytest.fixture(scope="module")
 def judge_stopped(at_2025_12, models, as_of_file) -> dict:
@@ -309,8 +347,10 @@ def judge_stopped(at_2025_12, models, as_of_file) -> dict:
         2025-06: counting back from there, the practice period starts at the store's first month.
     """
     as_of_file.write_text("2026-06\n")
-    seen = {"store_too_short": periods().get("stopped", ""),
-            "score_run": run("judge/judge.py", "score", "val", str(models["baseline"]))}
+    seen = {
+        "store_too_short": periods().get("stopped", ""),
+        "score_run": run("judge/judge.py", "score", "val", str(models["baseline"])),
+    }
     as_of_file.write_text("2025-06\n")
     seen["nothing_to_learn_from"] = periods().get("stopped", "")
     as_of_file.write_text("2025-12\n")
@@ -328,7 +368,9 @@ def test_and_it_scores_nothing_then(judge_stopped):
     assert judge_stopped["score_run"].stdout == ""
 
 
-def test_the_judge_stops_with_one_line_if_the_store_has_no_month_before_the_practice_period(judge_stopped):
+def test_the_judge_stops_with_one_line_if_the_store_has_no_month_before_the_practice_period(
+    judge_stopped,
+):
     stopped = judge_stopped["nothing_to_learn_from"]
     assert len(stopped.splitlines()) == 1
     assert "before the practice period, 2023-01 to 2023-12" in stopped
@@ -385,8 +427,14 @@ def play(model_code) -> tuple[dict[str, str], str]:
     def stand_in(work) -> dict:
         found["brief"] = (work / "program.md").read_text()
         (work / "model.py").write_text(model_code)
-        return {"structured_output": {"idea": "an idea worth trying", "lesson": "What this turn taught me.",
-                                      "practice": None, "submit": True}}
+        return {
+            "structured_output": {
+                "idea": "an idea worth trying",
+                "lesson": "What this turn taught me.",
+                "practice": None,
+                "submit": True,
+            }
+        }
 
     with pytest.MonkeyPatch.context() as patch:  # the real run_agent is back when the turn is done
         patch.setattr(loop, "run_agent", stand_in)
@@ -465,12 +513,29 @@ def in_agent_sandbox(work, *command) -> str:
     shutil.copy(ROOT / "lab" / "practice.py", work / "practice.py")
     (work / "champion.py").write_text(REGRESSION)
     (work / "model.py").write_text(WITH_YESTERDAY)
-    ran = subprocess.run(["docker", "run", "--rm", "--pull", "never", "--network", "none", "-v", f"{work}:/work",
-                          *store.mounts(loop.agent_months()), "toy-agent-sandbox", *command], capture_output=True, text=True)
+    ran = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--pull",
+            "never",
+            "--network",
+            "none",
+            "-v",
+            f"{work}:/work",
+            *store.mounts(loop.agent_months()),
+            "toy-agent-sandbox",
+            *command,
+        ],
+        capture_output=True,
+        text=True,
+    )
     return ran.stdout or ran.stderr[-300:]
 
 
 # --- Before any advance: every row records the as-of date 2025-12 --------------------------
+
 
 @pytest.fixture(scope="module")
 def turn_1(judge_stopped, lab) -> dict:
@@ -492,12 +557,22 @@ def turn_1(judge_stopped, lab) -> dict:
     """
     loop.start()
     row, brief = play(REGRESSION)
-    return {"row": row, "rows": loop.read_ledger(), "agent_ledger": agent_ledger(), "brief": brief,
-            "template": (loop.LAB / "program.md").read_text()}
+    return {
+        "row": row,
+        "rows": loop.read_ledger(),
+        "agent_ledger": agent_ledger(),
+        "brief": brief,
+        "template": (loop.LAB / "program.md").read_text(),
+    }
 
 
 def test_turn_1_under_2025_12_the_regression_is_kept_with_the_scores_it_always_had(turn_1):
-    assert cells(turn_1["row"], "turn", "verdict", "practice", "val_mae") == ["1", "KEPT", "3.036", "2.915"]
+    assert cells(turn_1["row"], "turn", "verdict", "practice", "val_mae") == [
+        "1",
+        "KEPT",
+        "3.036",
+        "2.915",
+    ]
 
 
 def test_both_rows_so_far_record_the_as_of_date_they_were_measured_under(turn_1):
@@ -525,6 +600,7 @@ def test_lab_program_md_itself_is_a_template_and_names_no_date(turn_1):
 
 # --- Months that arrive move nothing ------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def six_months_arrived(turn_1) -> dict:
     """Run `ingest.py --through 2026-06`, and ask where the periods and the agent's months are.
@@ -541,7 +617,12 @@ def six_months_arrived(turn_1) -> dict:
         `judge.py periods` printed; and "agent_newest", the newest month the agent has.
     """
     ingest = run("scripts/ingest.py", "--through", "2026-06")
-    return {"run": ingest, "newest": store.months()[-1], "periods": periods(), "agent_newest": loop.agent_months()[-1]}
+    return {
+        "run": ingest,
+        "newest": store.months()[-1],
+        "periods": periods(),
+        "agent_newest": loop.agent_months()[-1],
+    }
 
 
 def test_ingest_through_2026_06_adds_six_months_to_the_store(six_months_arrived):
@@ -558,6 +639,7 @@ def test_the_agents_months_still_end_at_2024_06(six_months_arrived):
 
 
 # --- loop.advance(): an advance happens whole or not at all ------------------------------
+
 
 def interrupted() -> None:
     """Stands in for loop.write_agent_ledger() when Ctrl-C arrives just after the full ledger got its row."""
@@ -613,17 +695,22 @@ def advances_cut_short(six_months_arrived, as_of_file) -> dict:
     return seen
 
 
-def test_an_advance_that_cant_measure_the_champion_stops_and_leaves_the_as_of_date_and_the_ledger_as_they_were(advances_cut_short):
+def test_an_advance_that_cant_measure_the_champion_stops_and_leaves_the_as_of_date_and_the_ledger_as_they_were(
+    advances_cut_short,
+):
     assert "could not be measured" in advances_cut_short["crashed"]
     assert advances_cut_short["before"][0] == b"2025-12\n"
     assert advances_cut_short["after_crashed"] == advances_cut_short["before"]
 
 
-def test_an_advance_interrupted_while_it_writes_the_ledgers_leaves_the_as_of_date_and_both_ledgers_as_they_were(advances_cut_short):
+def test_an_advance_interrupted_while_it_writes_the_ledgers_leaves_the_as_of_date_and_both_ledgers_as_they_were(
+    advances_cut_short,
+):
     assert advances_cut_short["after_interrupted"] == advances_cut_short["before"]
 
 
 # --- loop.advance(): the as-of date moves to the store's newest month ---------------------
+
 
 @pytest.fixture(scope="module")
 def advanced_to_2026_06(advances_cut_short, as_of_file) -> dict:
@@ -644,8 +731,14 @@ def advanced_to_2026_06(advances_cut_short, as_of_file) -> dict:
         ledger; "agent_ledger", the lines of the agent's copy; and "champion", lab/model.py.
     """
     stopped = stops(loop.advance)
-    return {"stopped": stopped, "as_of": as_of_file.read_text(), "periods": periods(), "rows": loop.read_ledger(),
-            "agent_ledger": agent_ledger(), "champion": (loop.LAB / "model.py").read_text()}
+    return {
+        "stopped": stopped,
+        "as_of": as_of_file.read_text(),
+        "periods": periods(),
+        "rows": loop.read_ledger(),
+        "agent_ledger": agent_ledger(),
+        "champion": (loop.LAB / "model.py").read_text(),
+    }
 
 
 def test_advance_as_of_txt_reads_2026_06(advanced_to_2026_06):
@@ -663,7 +756,9 @@ def test_advance_one_advanced_row_with_no_turn_number_under_the_new_as_of_date(a
     assert len(rows) == 3
 
 
-def test_advance_the_row_holds_the_champions_scores_on_the_new_practice_and_validation_periods(advanced_to_2026_06):
+def test_advance_the_row_holds_the_champions_scores_on_the_new_practice_and_validation_periods(
+    advanced_to_2026_06,
+):
     # 2.970 and 2.768
     row = advanced_to_2026_06["rows"][-1]
     assert (float(row["practice"]), float(row["val_mae"])) == EXPECTED["2026-06"]["regression"][:2]
@@ -677,17 +772,29 @@ def test_advance_the_champions_model_is_unchanged(advanced_to_2026_06):
     assert advanced_to_2026_06["champion"] == REGRESSION
 
 
-def test_agents_copy_the_top_line_gives_the_champions_new_practice_score_and_an_advance_is_not_a_try(advanced_to_2026_06):
-    assert advanced_to_2026_06["agent_ledger"][:2] == ["# Champion: turn 1, practice 2.97 MWh",
-                                                       "# Ideas judged: 1. The next must win 97.5% of the judge's reshuffles."]
+def test_agents_copy_the_top_line_gives_the_champions_new_practice_score_and_an_advance_is_not_a_try(
+    advanced_to_2026_06,
+):
+    assert advanced_to_2026_06["agent_ledger"][:2] == [
+        "# Champion: turn 1, practice 2.97 MWh",
+        "# Ideas judged: 1. The next must win 97.5% of the judge's reshuffles.",
+    ]
 
 
-def test_agents_copy_the_advanced_row_shows_the_new_practice_score_and_no_validation_number(advanced_to_2026_06):
-    assert advanced_to_2026_06["agent_ledger"][-1].split("\t")[3:7] == ["-", "2.97", "-", "advanced"]
+def test_agents_copy_the_advanced_row_shows_the_new_practice_score_and_no_validation_number(
+    advanced_to_2026_06,
+):
+    assert advanced_to_2026_06["agent_ledger"][-1].split("\t")[3:7] == [
+        "-",
+        "2.97",
+        "-",
+        "advanced",
+    ]
     assert "2.768" not in "\n".join(advanced_to_2026_06["agent_ledger"])
 
 
 # --- After the advance: the agent and the judge work on the new periods --------------------
+
 
 @pytest.fixture(scope="module")
 def turn_2(advanced_to_2026_06, as_of_file, tmp_path_factory) -> dict:
@@ -712,12 +819,20 @@ def turn_2(advanced_to_2026_06, as_of_file, tmp_path_factory) -> dict:
         with; and "as_of" and "rows", the as-of file and the full ledger after it.
     """
     months = sorted(in_agent_sandbox(tmp_path_factory.mktemp("agent"), "ls", "/data").split())
-    printed = in_agent_sandbox(tmp_path_factory.mktemp("agent"), "python", "practice.py", "champion.py", "model.py")
+    printed = in_agent_sandbox(
+        tmp_path_factory.mktemp("agent"), "python", "practice.py", "champion.py", "model.py"
+    )
     lines = [line.split() for line in printed.splitlines() if ":" in line]
     row, brief = play(WITH_YESTERDAY)
-    return {"months": months, "practice": {words[0].rstrip(":"): float(words[1]) for words in lines},
-            "row": row, "brief": brief, "second_advance": stops(loop.advance),
-            "as_of": as_of_file.read_text(), "rows": loop.read_ledger()}
+    return {
+        "months": months,
+        "practice": {words[0].rstrip(":"): float(words[1]) for words in lines},
+        "row": row,
+        "brief": brief,
+        "second_advance": stops(loop.advance),
+        "as_of": as_of_file.read_text(),
+        "rows": loop.read_ledger(),
+    }
 
 
 def test_the_agent_sandbox_holds_data_through_2024_12_24_months_from_2023_01(turn_2):
@@ -734,8 +849,18 @@ def test_a_turn_after_the_advance_its_row_is_turn_2_under_the_as_of_date_2026_06
     assert cells(turn_2["row"], "turn", "as_of") == ["2", "2026-06"]
 
 
-def test_that_turn_the_loop_measured_the_same_practice_numbers_as_practice_py_too_few_wins_to_be_judged(turn_2):
-    assert cells(turn_2["row"], *PRACTICE, "verdict", *VALIDATION) == ["2.97", "2.922", "86.18", "dropped on practice", "-", "-", "-"]
+def test_that_turn_the_loop_measured_the_same_practice_numbers_as_practice_py_too_few_wins_to_be_judged(
+    turn_2,
+):
+    assert cells(turn_2["row"], *PRACTICE, "verdict", *VALIDATION) == [
+        "2.97",
+        "2.922",
+        "86.18",
+        "dropped on practice",
+        "-",
+        "-",
+        "-",
+    ]
 
 
 def test_that_turn_the_brief_named_the_new_dates(turn_2):
@@ -751,6 +876,7 @@ def test_a_second_advance_stops_nothing_newer_to_advance_to(turn_2):
 
 
 # --- One more month arrives: before the next advance it is mounted nowhere -------------------
+
 
 def newest_month_in_the_model_sandbox(model_path, period) -> float:
     """Start a model sandbox for one period and ask the model that names its newest month.
@@ -792,9 +918,14 @@ def one_more_month_arrived(turn_2, models) -> dict:
         and "model_sandbox_newest", the newest month in the model sandbox for each period.
     """
     run("scripts/ingest.py", "--through", "2026-07")
-    return {"newest": store.months()[-1], "agent_newest": loop.agent_months()[-1],
-            "model_sandbox_newest": {period: newest_month_in_the_model_sandbox(models["newest"], period)
-                                     for period in ("practice", "val", "holdout")}}
+    return {
+        "newest": store.months()[-1],
+        "agent_newest": loop.agent_months()[-1],
+        "model_sandbox_newest": {
+            period: newest_month_in_the_model_sandbox(models["newest"], period)
+            for period in ("practice", "val", "holdout")
+        },
+    }
 
 
 def test_ingest_through_2026_07_adds_one_month(one_more_month_arrived):
@@ -805,12 +936,17 @@ def test_the_agents_months_still_end_at_2024_12(one_more_month_arrived):
     assert one_more_month_arrived["agent_newest"] == "2024-12"
 
 
-@pytest.mark.parametrize("period, newest", [("practice", 202312), ("val", 202412), ("holdout", 202512)])
-def test_model_sandbox_under_2026_06_its_newest_month_is_the_one_before_the_period(period, newest, one_more_month_arrived):
+@pytest.mark.parametrize(
+    "period, newest", [("practice", 202312), ("val", 202412), ("holdout", 202512)]
+)
+def test_model_sandbox_under_2026_06_its_newest_month_is_the_one_before_the_period(
+    period, newest, one_more_month_arrived
+):
     assert one_more_month_arrived["model_sandbox_newest"][period] == newest
 
 
 # --- The next advance moves one month, and ideas are judged on the new validation period ----
+
 
 @pytest.fixture(scope="module")
 def advanced_to_2026_07(one_more_month_arrived, as_of_file) -> dict:
@@ -831,8 +967,12 @@ def advanced_to_2026_07(one_more_month_arrived, as_of_file) -> dict:
         the first line of the agent's copy; and "row", turn 3's row.
     """
     stopped = stops(loop.advance)
-    seen = {"stopped": stopped, "as_of": as_of_file.read_text(), "advanced_row": loop.read_ledger()[-1],
-            "agent_ledger_top": agent_ledger()[0]}
+    seen = {
+        "stopped": stopped,
+        "as_of": as_of_file.read_text(),
+        "advanced_row": loop.read_ledger()[-1],
+        "agent_ledger_top": agent_ledger()[0],
+    }
     seen["row"], _ = play(WITH_YESTERDAY)
     return seen
 
@@ -853,9 +993,18 @@ def test_agents_copy_the_top_line_follows_the_newest_advance(advanced_to_2026_07
     assert advanced_to_2026_07["agent_ledger_top"] == "# Champion: turn 1, practice 2.917 MWh"
 
 
-def test_a_turn_under_2026_07_the_same_idea_now_wins_95_17_pct_on_practice_so_it_is_judged(advanced_to_2026_07):
+def test_a_turn_under_2026_07_the_same_idea_now_wins_95_17_pct_on_practice_so_it_is_judged(
+    advanced_to_2026_07,
+):
     # judged on the validation period 2025-02 to 2026-01
-    assert cells(advanced_to_2026_07["row"], "turn", "as_of", *PRACTICE, "verdict") == ["3", "2026-07", "2.917", "2.846", "95.17", "thrown away"]
+    assert cells(advanced_to_2026_07["row"], "turn", "as_of", *PRACTICE, "verdict") == [
+        "3",
+        "2026-07",
+        "2.917",
+        "2.846",
+        "95.17",
+        "thrown away",
+    ]
 
 
 def test_it_is_the_2nd_try_so_the_bar_is_97_5_pct(advanced_to_2026_07):
@@ -864,6 +1013,7 @@ def test_it_is_the_2nd_try_so_the_bar_is_97_5_pct(advanced_to_2026_07):
 
 
 # --- loop.holdout(): the holdout period of the as-of date, with validation measured now ------
+
 
 @pytest.fixture(scope="module")
 def holdout_printed(advanced_to_2026_07) -> str:
@@ -885,8 +1035,14 @@ def holdout_printed(advanced_to_2026_07) -> str:
     return printed.getvalue()
 
 
-def test_holdout_the_baseline_and_the_kept_model_each_with_its_validation_score_measured_now_and_its_holdout_score(holdout_printed):
-    table = {line.split(":")[0]: line.split()[-2:] for line in holdout_printed.splitlines() if line.startswith("turn ")}
+def test_holdout_the_baseline_and_the_kept_model_each_with_its_validation_score_measured_now_and_its_holdout_score(
+    holdout_printed,
+):
+    table = {
+        line.split(":")[0]: line.split()[-2:]
+        for line in holdout_printed.splitlines()
+        if line.startswith("turn ")
+    }
     assert table == {"turn 0": ["5.80", "5.88"], "turn 1": ["2.81", "2.72"]}
 
 
@@ -895,6 +1051,7 @@ def test_holdout_it_says_which_months_those_are(holdout_printed):
 
 
 # --- loop.reset(): back to the as-of date in the start row; the store keeps its months -------
+
 
 @pytest.fixture(scope="module")
 def after_reset(holdout_printed, as_of_file) -> dict:
@@ -914,8 +1071,14 @@ def after_reset(holdout_printed, as_of_file) -> dict:
         lab/model.py; and "left_behind", which of the ledgers and history/ still exist.
     """
     loop.reset()
-    return {"as_of": as_of_file.read_text(), "newest": store.months()[-1], "model": (loop.LAB / "model.py").read_text(),
-            "left_behind": [path.name for path in (loop.LEDGER, loop.AGENT_LEDGER, loop.HISTORY) if path.exists()]}
+    return {
+        "as_of": as_of_file.read_text(),
+        "newest": store.months()[-1],
+        "model": (loop.LAB / "model.py").read_text(),
+        "left_behind": [
+            path.name for path in (loop.LEDGER, loop.AGENT_LEDGER, loop.HISTORY) if path.exists()
+        ],
+    }
 
 
 def test_reset_as_of_txt_reads_2025_12_again(after_reset):
@@ -934,6 +1097,7 @@ def test_reset_the_baseline_is_back_and_the_ledgers_and_history_are_cleared(afte
 # With no ledger yet, an advance starts one first, as `run` does, so the start row still
 # records the as-of date the research started under. The baseline is measured before the
 # ledger is made, so a baseline that can't be measured leaves nothing half made.
+
 
 @pytest.fixture(scope="module")
 def advanced_with_no_ledger(after_reset, as_of_file) -> dict:
@@ -955,9 +1119,11 @@ def advanced_with_no_ledger(after_reset, as_of_file) -> dict:
         ledger after it. "as_of_after_reset", the as-of file after the reset that follows.
     """
     (loop.LAB / "model.py").write_text(CRASHES)
-    seen = {"crashed": stops(loop.advance),
-            "left_behind": [path.name for path in (loop.LEDGER, loop.AGENT_LEDGER) if path.exists()],
-            "as_of_after_crashed": as_of_file.read_text()}
+    seen = {
+        "crashed": stops(loop.advance),
+        "left_behind": [path.name for path in (loop.LEDGER, loop.AGENT_LEDGER) if path.exists()],
+        "as_of_after_crashed": as_of_file.read_text(),
+    }
     (loop.LAB / "model.py").write_text(BASELINE)
 
     seen["stopped"] = stops(loop.advance)
@@ -967,16 +1133,25 @@ def advanced_with_no_ledger(after_reset, as_of_file) -> dict:
     return seen
 
 
-def test_advance_with_no_ledger_and_a_baseline_that_cant_be_measured_it_stops_and_no_ledger_is_left_behind(advanced_with_no_ledger):
+def test_advance_with_no_ledger_and_a_baseline_that_cant_be_measured_it_stops_and_no_ledger_is_left_behind(
+    advanced_with_no_ledger,
+):
     assert "could not be measured" in advanced_with_no_ledger["crashed"]
     assert advanced_with_no_ledger["left_behind"] == []
     assert advanced_with_no_ledger["as_of_after_crashed"] == "2025-12\n"
 
 
-def test_advance_with_no_ledger_the_baselines_start_row_is_measured_under_2025_12_then_the_advanced_row_under_2026_07(advanced_with_no_ledger):
+def test_advance_with_no_ledger_the_baselines_start_row_is_measured_under_2025_12_then_the_advanced_row_under_2026_07(
+    advanced_with_no_ledger,
+):
     assert advanced_with_no_ledger["stopped"] == ""
-    assert [cells(row, "turn", "as_of", "verdict", "practice", "val_mae") for row in advanced_with_no_ledger["rows"]] == [
-        ["0", "2025-12", "start", "5.656", "5.782"], ["-", "2026-07", "advanced", "5.65", "5.801"]]
+    assert [
+        cells(row, "turn", "as_of", "verdict", "practice", "val_mae")
+        for row in advanced_with_no_ledger["rows"]
+    ] == [
+        ["0", "2025-12", "start", "5.656", "5.782"],
+        ["-", "2026-07", "advanced", "5.65", "5.801"],
+    ]
 
 
 def test_so_a_reset_after_that_still_returns_to_2025_12(advanced_with_no_ledger):

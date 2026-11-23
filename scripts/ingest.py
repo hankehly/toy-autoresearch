@@ -9,6 +9,7 @@ touches nothing else.
 In a real project the job that builds the data (dbt) does this. This script exists only so
 the toy can let time pass.
 """
+
 import argparse
 import sys
 from pathlib import Path
@@ -49,16 +50,30 @@ def ingest(through) -> list[str]:
         The months added: those up to `through` that the store did not have.
     """
     have = store.months()
-    added = [month for month in store.months(store.FUTURE) if month <= through and month not in have]
+    added = [
+        month for month in store.months(store.FUTURE) if month <= through and month not in have
+    ]
     for month in added:
         store.write(month, store.read([month], store.FUTURE))
     return added
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Move months from the pretend future into the data store.")
-    parser.add_argument("--through", type=as_month, required=True, help="the newest month to add, like 2026-06")
+    parser = argparse.ArgumentParser(
+        description="Move months from the pretend future into the data store."
+    )
+    parser.add_argument(
+        "--through", type=as_month, required=True, help="the newest month to add, like 2026-06"
+    )
     added = ingest(parser.parse_args().through)
     have = store.months()
-    print(f"Added {len(added)} months" + (f" ({added[0]} to {added[-1]})" if added else "") + ". "
-          + (f"The store holds {have[0]} to {have[-1]}." if have else "The store is empty: run scripts/make_data.py first."))
+    print(
+        f"Added {len(added)} months"
+        + (f" ({added[0]} to {added[-1]})" if added else "")
+        + ". "
+        + (
+            f"The store holds {have[0]} to {have[-1]}."
+            if have
+            else "The store is empty: run scripts/make_data.py first."
+        )
+    )

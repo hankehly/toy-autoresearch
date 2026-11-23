@@ -12,6 +12,7 @@ Each turn it has one idea and tries 7 versions of it privately, then submits the
 tweak a setting; half add a new input that sounds useful but is pure noise in this town:
 a made-up events calendar or a humidity-like series.
 """
+
 import numpy as np
 import pandas as pd
 from scipy.signal import lfilter
@@ -30,7 +31,7 @@ def months(a, b) -> list[pd.Timestamp]:
 
 
 PRACTICE = months("2023-07-01", "2024-06-01")  # the agent's own year, after the fix
-VAL = months("2024-07-01", "2025-06-01")       # the judge's validation year
+VAL = months("2024-07-01", "2025-06-01")  # the judge's validation year
 HOLDOUT = months("2025-07-01", "2025-12-01")
 
 
@@ -85,7 +86,7 @@ def junk(jid, town) -> np.ndarray:
         if jid % 2 == 0:
             JUNK[key] = (rng.random(N) < 0.1).astype(float)
         else:
-            JUNK[key] = lfilter([np.sqrt(1 - 0.95 ** 2)], [1, -0.95], rng.normal(size=N))
+            JUNK[key] = lfilter([np.sqrt(1 - 0.95**2)], [1, -0.95], rng.normal(size=N))
     return JUNK[key]
 
 
@@ -141,6 +142,7 @@ def run_month(p, town, F, cF, h0, s, e) -> np.ndarray:
         w = p["win"]
         off = dow_offsets(town, h0, s) if p["dow"] else np.zeros(7)
         i = np.arange(h0 + w, s)
+
         def level(k: np.ndarray) -> np.ndarray:
             return (town.cy[k] - town.cy[k - w]) / w - ((town.cD[k] - town.cD[k - w]) / w) @ off
 
@@ -155,9 +157,11 @@ def run_month(p, town, F, cF, h0, s, e) -> np.ndarray:
         resid = target - X @ coef
     else:  # absolute: load straight from temperature, weekday and any extra inputs
         i = np.arange(h0, s)
+
         def design(k: np.ndarray) -> np.ndarray:
             return np.column_stack(
-                [np.ones(len(k)), F[k]] + ([np.eye(7)[DOW[k]][:, 1:]] if p["dow"] else []))
+                [np.ones(len(k)), F[k]] + ([np.eye(7)[DOW[k]][:, 1:]] if p["dow"] else [])
+            )
 
         Z = design(i)
         coef = np.linalg.lstsq(Z, town.y[i], rcond=None)[0]
@@ -185,15 +189,19 @@ def errors(p, town, month_list) -> np.ndarray:
 
 def answer_key_errors(town, month_list) -> np.ndarray:
     """Each day's miss, over these months, of the recipe that made the data."""
-    idx = np.concatenate([np.arange(FIRST[m], FIRST[m + pd.offsets.MonthBegin(1)]) for m in month_list])
+    idx = np.concatenate(
+        [np.arange(FIRST[m], FIRST[m + pd.offsets.MonthBegin(1)]) for m in month_list]
+    )
     t = town.t[idx]
     weekend = np.select([DOW[idx] == 5, DOW[idx] == 6], [-8.0, -12.0], 0.0)
-    return np.abs(town.y[idx] - (100 + 1.8 * np.maximum(0, 16 - t) + 2.5 * np.maximum(0, t - 22) + weekend))
+    return np.abs(
+        town.y[idx] - (100 + 1.8 * np.maximum(0, 16 - t) + 2.5 * np.maximum(0, t - 22) + weekend)
+    )
 
 
 # ---------------- the judge's keep rules ----------------
-DAY_PICKS = np.random.default_rng(0).integers(0, 365, size=(1000, 365))   # judge.py today
-WEEK = np.minimum(np.arange(365) // 7, 51)                                # 52 weeks
+DAY_PICKS = np.random.default_rng(0).integers(0, 365, size=(1000, 365))  # judge.py today
+WEEK = np.minimum(np.arange(365) // 7, 51)  # 52 weeks
 WEEK_PICKS = np.random.default_rng(0).integers(0, 52, size=(10000, 52))
 
 
@@ -212,7 +220,10 @@ def keep_by_weeks(old, new, k) -> tuple[bool, float]:
 
 
 # ---------------- the robot ----------------
-TODAY = dict(mode="anchored", th=18.0, tc=18.0, win=7, hist=99, shrink=1.0, dow=True, moy=False, junk=())  # turn 2
+# turn 2
+TODAY = dict(
+    mode="anchored", th=18.0, tc=18.0, win=7, hist=99, shrink=1.0, dow=True, moy=False, junk=()
+)
 BEST = dict(TODAY, mode="absolute", th=16.0, tc=22.0)  # about as good as this kind of model gets
 SETTINGS = ["mode", "th", "tc", "win", "hist", "shrink", "dow", "moy"]
 
@@ -246,13 +257,25 @@ def propose(p, idea, rng, fresh_ids) -> list[dict]:
             out.append(dict(flipped, th=round(th, 1), tc=round(rng.uniform(max(th, 12), 30), 1)))
         return out
     if idea == "th":
-        return [dict(p, th=round(float(np.clip(p["th"] + rng.normal(0, 2.5), 8, p["tc"])), 1)) for _ in range(7)]
+        return [
+            dict(p, th=round(float(np.clip(p["th"] + rng.normal(0, 2.5), 8, p["tc"])), 1))
+            for _ in range(7)
+        ]
     if idea == "tc":
-        return [dict(p, tc=round(float(np.clip(p["tc"] + rng.normal(0, 2.5), p["th"], 30)), 1)) for _ in range(7)]
+        return [
+            dict(p, tc=round(float(np.clip(p["tc"] + rng.normal(0, 2.5), p["th"], 30)), 1))
+            for _ in range(7)
+        ]
     if idea == "shrink":
-        return [dict(p, shrink=round(float(np.clip(p["shrink"] + rng.normal(0, 0.1), 0.5, 1.5)), 2)) for _ in range(7)]
+        return [
+            dict(p, shrink=round(float(np.clip(p["shrink"] + rng.normal(0, 0.1), 0.5, 1.5)), 2))
+            for _ in range(7)
+        ]
     if idea == "win":
-        return [dict(p, win=int(w)) for w in rng.choice([w for w in range(3, 29) if w != p["win"]], 7, replace=False)]
+        return [
+            dict(p, win=int(w))
+            for w in rng.choice([w for w in range(3, 29) if w != p["win"]], 7, replace=False)
+        ]
     if idea == "hist":
         return [dict(p, hist=h) for h in [6, 9, 12, 18, 99] if h != p["hist"]]
     return [dict(p, **{idea: not p[idea]})]  # dow, moy: flip
@@ -285,9 +308,13 @@ class Lab:
         key = (tuple(sorted(p.items())), what)
         if key not in self.cache:
             if what == "truth":
-                self.cache[key] = float(np.mean([errors(p, t, VAL + HOLDOUT).mean() for t in self.multiverse]))
+                self.cache[key] = float(
+                    np.mean([errors(p, t, VAL + HOLDOUT).mean() for t in self.multiverse])
+                )
             else:
-                self.cache[key] = errors(p, self.town, {"practice": PRACTICE, "val": VAL, "holdout": HOLDOUT}[what])
+                self.cache[key] = errors(
+                    p, self.town, {"practice": PRACTICE, "val": VAL, "holdout": HOLDOUT}[what]
+                )
         return self.cache[key]
 
     def night(self, start, private, rule, seed, new_input_share=0.5, turns=300) -> pd.DataFrame:
@@ -318,13 +345,17 @@ class Lab:
         JUNK.clear()
         self.cache = {k: v for k, v in self.cache.items() if not dict(k[0])["junk"]}
         rng = np.random.default_rng(seed)
-        fresh_ids = iter(range(10 ** 6))
+        fresh_ids = iter(range(10**6))
         champ, k, rows = start, 0, []
         for turn in range(1, turns + 1):
             if rng.random() < new_input_share:
                 idea = "new input"
             else:
-                idea = str(rng.choice([s for s in SETTINGS if not (s == "win" and champ["mode"] == "absolute")]))
+                idea = str(
+                    rng.choice(
+                        [s for s in SETTINGS if not (s == "win" and champ["mode"] == "absolute")]
+                    )
+                )
             variants = propose(champ, idea, rng, fresh_ids)
             private_maes = [self.score(v, private).mean() for v in variants]
             best = variants[int(np.argmin(private_maes))]
@@ -336,10 +367,21 @@ class Lab:
                 if kept:
                     truth_change = self.score(best, "truth") - self.score(champ, "truth")
                     champ = best
-            rows.append(dict(turn=turn, idea=idea, submitted=submitted, kept=kept, win_share=share,
-                             truth_change=truth_change, val=self.score(champ, "val").mean(),
-                             holdout=self.score(champ, "holdout").mean(), truth=self.score(champ, "truth"),
-                             inputs=len(champ["junk"]), champion=str(champ)))
+            rows.append(
+                dict(
+                    turn=turn,
+                    idea=idea,
+                    submitted=submitted,
+                    kept=kept,
+                    win_share=share,
+                    truth_change=truth_change,
+                    val=self.score(champ, "val").mean(),
+                    holdout=self.score(champ, "holdout").mean(),
+                    truth=self.score(champ, "truth"),
+                    inputs=len(champ["junk"]),
+                    champion=str(champ),
+                )
+            )
         return pd.DataFrame(rows)
 
 
@@ -357,13 +399,17 @@ SCENARIOS = {
 if __name__ == "__main__":
     lab = Lab()
     key_truth = float(np.mean([answer_key_errors(t, VAL + HOLDOUT).mean() for t in lab.multiverse]))
-    print(f"answer key: validation {answer_key_errors(lab.town, VAL).mean():.3f}  "
-          f"holdout {answer_key_errors(lab.town, HOLDOUT).mean():.3f}  truth {key_truth:.3f}")
+    print(
+        f"answer key: validation {answer_key_errors(lab.town, VAL).mean():.3f}  "
+        f"holdout {answer_key_errors(lab.town, HOLDOUT).mean():.3f}  truth {key_truth:.3f}"
+    )
     nights = []
     for scenario, start in SCENARIOS.items():
         s = {w: lab.score(start, w) for w in ("val", "holdout", "truth")}
-        print(f"\n{scenario}: start validation {s['val'].mean():.3f}  "
-              f"holdout {s['holdout'].mean():.3f}  truth {s['truth']:.3f}")
+        print(
+            f"\n{scenario}: start validation {s['val'].mean():.3f}  "
+            f"holdout {s['holdout'].mean():.3f}  truth {s['truth']:.3f}"
+        )
         for name, (private, rule) in SYSTEMS.items():
             for seed in range(10):
                 df = lab.night(start, private, rule, seed)
@@ -373,14 +419,27 @@ if __name__ == "__main__":
                 nights.append(df)
         part = pd.concat([n for n in nights if n.scenario.iloc[0] == scenario])
         end, keeps = part[part.turn == 300], part[part.kept]
-        print(pd.DataFrame({
-            "kept": keeps.groupby("system").size().reindex(SYSTEMS, fill_value=0) / 10,
-            "noise inputs kept": end.groupby("system").inputs.mean(),
-            "flukes kept": keeps[keeps.truth_change >= 0].groupby("system").size().reindex(SYSTEMS, fill_value=0) / 10,
-            "ledger gain": end.groupby("system").ledger_gain.mean(),
-            "true gain": end.groupby("system").true_gain.mean(),
-            "final holdout": end.groupby("system").holdout.mean(),
-        }).reindex(SYSTEMS).round(3).to_string())
+        print(
+            pd.DataFrame(
+                {
+                    "kept": keeps.groupby("system").size().reindex(SYSTEMS, fill_value=0) / 10,
+                    "noise inputs kept": end.groupby("system").inputs.mean(),
+                    "flukes kept": keeps[keeps.truth_change >= 0]
+                    .groupby("system")
+                    .size()
+                    .reindex(SYSTEMS, fill_value=0)
+                    / 10,
+                    "ledger gain": end.groupby("system").ledger_gain.mean(),
+                    "true gain": end.groupby("system").true_gain.mean(),
+                    "final holdout": end.groupby("system").holdout.mean(),
+                }
+            )
+            .reindex(SYSTEMS)
+            .round(3)
+            .to_string()
+        )
     pd.concat(nights).to_csv("night_sim.csv", index=False)
-    print("\nAverages over 10 nights of 300 turns each. MWh per day; gain = how much the average miss shrank.")
+    print(
+        "\nAverages over 10 nights of 300 turns each. MWh per day; gain = how much the average miss shrank."
+    )
     print("'flukes' = kept changes that made the true error worse.")
