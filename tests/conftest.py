@@ -17,6 +17,7 @@ A fixture is a function that prepares something a test needs. A test asks for on
 it as a parameter. "module" scope means it runs once for a test file, "session" scope once
 for the whole run, and `autouse` means every test gets it without asking.
 """
+
 import importlib
 import shutil
 import subprocess
@@ -88,8 +89,10 @@ def as_of_file(tmp_path_factory) -> Iterator[Path]:
     path.write_text("2025-12\n")
     with pytest.MonkeyPatch.context() as patch:  # undoes its changes when the test file is done
         patch.setenv("TOY_AS_OF", str(path))
-        patch.setattr(loop, "AS_OF", path)   # loop.py and judge.py read TOY_AS_OF once, when they are loaded,
-        patch.setattr(judge, "AS_OF", path)  # so point the copies already loaded here at the file too
+        # loop.py and judge.py read TOY_AS_OF once, when they are loaded,
+        patch.setattr(loop, "AS_OF", path)
+        # so point the copies already loaded here at the file too
+        patch.setattr(judge, "AS_OF", path)
         yield path
 
 
@@ -103,4 +106,6 @@ def toy_store(data_folder) -> None:
     data_folder : Path
         The test file's data folder, which TOY_DATA names.
     """
-    subprocess.run([sys.executable, "scripts/make_data.py"], cwd=ROOT, check=True, capture_output=True)
+    subprocess.run(
+        [sys.executable, "scripts/make_data.py"], cwd=ROOT, check=True, capture_output=True
+    )

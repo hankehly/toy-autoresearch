@@ -1,6 +1,6 @@
-# Runs every test on GitHub: on each pull request, and on each push to main.
-# The tests are one command, the one you run on your Mac (`uv run pytest`) plus --locked.
-# It needs Docker, which GitHub's Linux machines have, and no login token, so this repo
+# Runs every test and every code check on GitHub: on each pull request, and on each push to
+# main. Each is a command you can run on your Mac too, here with --locked added.
+# The tests need Docker, which GitHub's Linux machines have, and no login token, so this repo
 # stores no secret.
 name: CI
 
@@ -10,13 +10,36 @@ on:
     branches: [main]
 
 permissions:
-  contents: read  # the job only reads the code
+  contents: read  # the jobs only read the code
+
+# Each action is pinned to a commit hash, with its version beside it: a version tag can be
+# moved to other code later, a hash can't. To update one, change the hash and the version.
 
 jobs:
   pytest:
     runs-on: ubuntu-latest
     timeout-minutes: 20  # the tests take about 3 minutes on a Mac; stop a run that hangs
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.4.0  # uv installs Python 3.12 and the locked packages on the first `uv run`
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false  # no step pushes, so don't leave GitHub's token in .git
+      # uv installs Python 3.12 and the locked packages on the first `uv run`
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
       - run: uv run --locked pytest  # --locked: stop if uv.lock no longer matches pyproject.toml, rather than quietly picking new versions
+
+  checks:  # they read the code without running it, so they take seconds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
+      - run: uv run --locked ruff check  # likely mistakes, and the style rules in CLAUDE.md (the rule list is in pyproject.toml)
+      - run: uv run --locked ruff format --check  # the layout `uv run ruff format` gives: one way to break a long line
+      - run: uv run --locked pyright  # a value used as the wrong type, such as something that may be None
+      - run: uv run --locked zizmor .github/workflows  # unsafe settings in this file, such as an action not pinned to a hash
+      # mistakes in this file: a misspelt key, a broken expression
+      - run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.12
+      # common Dockerfile mistakes (.hadolint.yaml lists the rules left out, and why)
+      - run: docker run --rm -v "$PWD:/repo:ro" -w /repo hadolint/hadolint:v2.15.1 hadolint docker/agent-proxy/Dockerfile docker/agent-sandbox/Dockerfile docker/model-sandbox/Dockerfile

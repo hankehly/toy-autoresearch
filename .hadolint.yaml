@@ -1,0 +1,11 @@
+# Settings for hadolint, which checks the Dockerfiles in docker/ for common mistakes:
+# The command is in .github/workflows/ci.yml; it runs on your Mac as written there.
+ignored:
+  # "Pin the version of every apt and apk package." Debian and Alpine delete a package's old
+  # versions, so a pinned one stops building within months. The base image's tag
+  # (python:3.12-slim, alpine:3.20) already holds them to one release.
+  - DL3008
+  - DL3018
+  # "Name the user by number, not by name." That is for Kubernetes; loop.py starts these
+  # containers with plain `docker run`.
+  - DL3066

@@ -17,6 +17,7 @@ and the findings in CLAUDE.md describe, so they must never change, whatever the 
 they come from their own random generator, in the same order of draws as always.
 tests/test_store.py checks them.
 """
+
 import argparse
 import shutil
 import sys
@@ -26,10 +27,12 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import store  # noqa: E402  (imported after the path is set: store.py lives in the repo root, not here)
-from ingest import as_month, ingest  # noqa: E402
+import store  # imported after the path is set: store.py lives in the repo root, not here
+from ingest import as_month, ingest
 
-STORE_THROUGH = "2025-12"  # the store's newest month on a fresh checkout. The pretend future runs on to 2042-12
+STORE_THROUGH = (
+    "2025-12"  # the store's newest month on a fresh checkout. The pretend future runs on to 2042-12
+)
 
 
 def town(days, rng, spell_before=None) -> tuple[pd.DataFrame, float]:
@@ -68,13 +71,15 @@ def town(days, rng, spell_before=None) -> tuple[pd.DataFrame, float]:
 
     # The secret recipe (MWh per day). Load follows the ACTUAL temperature,
     # but a model only ever gets the FORECAST, so even a perfect model can't hit zero.
-    heating = 1.8 * np.maximum(0, 16 - temp)   # below 16 C, heaters come on
-    cooling = 2.5 * np.maximum(0, temp - 22)   # above 22 C, air conditioners come on
+    heating = 1.8 * np.maximum(0, 16 - temp)  # below 16 C, heaters come on
+    cooling = 2.5 * np.maximum(0, temp - 22)  # above 22 C, air conditioners come on
     dow = days.dayofweek.to_numpy()
     weekend = np.select([dow == 5, dow == 6], [-8.0, -12.0], 0.0)  # Saturday, Sunday
     load = 100 + heating + cooling + weekend + rng.normal(0, 3, n)
 
-    table = pd.DataFrame({"date": days, "temp_forecast": temp_forecast.round(1), "load": load.round(1)})
+    table = pd.DataFrame(
+        {"date": days, "temp_forecast": temp_forecast.round(1), "load": load.round(1)}
+    )
     return table, float(spell[-1])
 
 
@@ -97,22 +102,37 @@ def make(start, filler) -> pd.DataFrame:
     # The days the toy began with, 2023-01-01 to 2025-12-31, always come from the same
     # generator and are always drawn as one run of 1,096 days. Everything else has its own
     # generator, so no setting can change a single draw of them.
-    first, spell = town(pd.date_range("2023-01-01", "2025-12-31", freq="D"), np.random.default_rng(7))
-    later, _ = town(pd.date_range("2026-01-01", "2042-12-31", freq="D"), np.random.default_rng(8), spell)
+    first, spell = town(
+        pd.date_range("2023-01-01", "2025-12-31", freq="D"), np.random.default_rng(7)
+    )
+    later, _ = town(
+        pd.date_range("2026-01-01", "2042-12-31", freq="D"), np.random.default_rng(8), spell
+    )
     days = pd.concat([first, later], ignore_index=True)
-    if start < "2023-01":  # earlier days too. (2023-01-01 still starts with no spell, as it always has.)
-        earlier, _ = town(pd.date_range(f"{start}-01", "2022-12-31", freq="D"), np.random.default_rng(6))
+    if (
+        start < "2023-01"
+    ):  # earlier days too. (2023-01-01 still starts with no spell, as it always has.)
+        earlier, _ = town(
+            pd.date_range(f"{start}-01", "2022-12-31", freq="D"), np.random.default_rng(6)
+        )
         days = pd.concat([earlier, days], ignore_index=True)
-    days = days[days.date >= f"{start}-01"].reset_index(drop=True)  # a --start after 2023-01 drops the days before it
+    # a --start after 2023-01 drops the days before it
+    days = days[days.date >= f"{start}-01"].reset_index(drop=True)
     noise = np.random.default_rng(9).normal(size=(len(days), filler))
     names = [f"filler_{i:03d}" for i in range(1, filler + 1)]
     return pd.concat([days, pd.DataFrame(noise, columns=names)], axis=1)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Make the fake town's data: data/future/ and data/store/.")
-    parser.add_argument("--start", type=as_month, default="2023-01", help="the first month (default 2023-01)")
-    parser.add_argument("--filler", type=int, default=0, help="extra input columns of random numbers (default 0)")
+    parser = argparse.ArgumentParser(
+        description="Make the fake town's data: data/future/ and data/store/."
+    )
+    parser.add_argument(
+        "--start", type=as_month, default="2023-01", help="the first month (default 2023-01)"
+    )
+    parser.add_argument(
+        "--filler", type=int, default=0, help="extra input columns of random numbers (default 0)"
+    )
     settings = parser.parse_args()
     if settings.start > STORE_THROUGH:
         parser.error(f"--start must be {STORE_THROUGH} or earlier, so the store has a first month")
@@ -126,4 +146,6 @@ if __name__ == "__main__":
 
     future, have = store.months(store.FUTURE), store.months()
     print(f"Made {len(days)} days, {future[0]} to {future[-1]}, in {store.FUTURE}.")
-    print(f"The store, {store.STORE}, holds {have[0]} to {have[-1]}. Later months arrive with scripts/ingest.py.")
+    print(
+        f"The store, {store.STORE}, holds {have[0]} to {have[-1]}. Later months arrive with scripts/ingest.py."
+    )

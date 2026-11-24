@@ -1,0 +1,14 @@
+# Checks that run on your Mac just before a commit is made, and stop it if they fail.
+# Git doesn't share hooks between checkouts, so switch them on once in each fresh checkout:
+#
+#     uv run pre-commit install
+#
+# The first commit after that takes about half a minute: pre-commit builds gitleaks (it fetches
+# the Go compiler by itself if your Mac has none). Later commits take under a second.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      # Stops a commit whose staged changes hold a secret, such as the login token in .env.
+      # .gitleaks.toml adds the rule for that token to gitleaks' built-in ones.
+      - id: gitleaks

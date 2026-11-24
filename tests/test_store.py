@@ -13,12 +13,14 @@ writes that fail, make_data.py with other settings. Each step is a fixture that 
 step before it and records what it saw. A test reads its step's record, never the store
 itself, so it gives the same result alone, or in any order.
 """
+
 import hashlib
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -27,14 +29,14 @@ import store
 
 ROOT = Path(__file__).resolve().parent.parent
 
-BASELINE = '''
+BASELINE = """
 def fit(history) -> None:
     return None
 
 
 def predict(state, history, today) -> float:
     return history["load"].tail(7).mean()
-'''
+"""
 
 # The ledger, history/ and the findings in CLAUDE.md describe the 1,096 days that used to be
 # judge/full_data.csv. This is that file's SHA-256 (see it with: git show d7be1ad:judge/full_data.csv | shasum -a 256).
@@ -63,7 +65,9 @@ def run(*command, data=None) -> subprocess.CompletedProcess:
     env = {name: value for name, value in os.environ.items() if name != "CLAUDE_CODE_OAUTH_TOKEN"}
     if data is not None:
         env["TOY_DATA"] = str(data)
-    return subprocess.run([sys.executable, *command], cwd=ROOT, env=env, capture_output=True, text=True)
+    return subprocess.run(
+        [sys.executable, *command], cwd=ROOT, env=env, capture_output=True, text=True
+    )
 
 
 def sha256_as_csv(days) -> str:
@@ -79,7 +83,9 @@ def sha256_as_csv(days) -> str:
     str
         The SHA-256 of the days written as CSV text, as `shasum -a 256` prints it.
     """
-    as_csv = days.assign(date=days.date.dt.strftime("%Y-%m-%d")).to_csv(index=False, lineterminator="\n")
+    as_csv = days.assign(date=days.date.dt.strftime("%Y-%m-%d")).to_csv(
+        index=False, lineterminator="\n"
+    )
     return hashlib.sha256(as_csv.encode()).hexdigest()
 
 
@@ -96,8 +102,13 @@ def val_scores(baseline) -> dict[str, float]:
     dict[str, float]
         Each model's average miss on the validation period, in MWh, by the model's name.
     """
-    return {name: json.loads(run("judge/judge.py", "score", "val", str(path)).stdout or "{}").get("mae")
-            for name, path in [("baseline", baseline), ("answer key", ROOT / "scripts" / "answer_key.py")]}
+    return {
+        name: json.loads(run("judge/judge.py", "score", "val", str(path)).stdout or "{}").get("mae")
+        for name, path in [
+            ("baseline", baseline),
+            ("answer key", ROOT / "scripts" / "answer_key.py"),
+        ]
+    }
 
 
 def file_bytes(folder) -> dict[str, bytes]:
@@ -113,7 +124,11 @@ def file_bytes(folder) -> dict[str, bytes]:
     dict[str, bytes]
         Each file's contents, by its path inside the folder.
     """
-    return {str(path.relative_to(folder)): path.read_bytes() for path in sorted(folder.rglob("*")) if path.is_file()}
+    return {
+        str(path.relative_to(folder)): path.read_bytes()
+        for path in sorted(folder.rglob("*"))
+        if path.is_file()
+    }
 
 
 @pytest.fixture(scope="module")
@@ -140,11 +155,20 @@ def baseline(tmp_path_factory) -> Path:
 # missing store stops it here. So each command gets a data folder that is certainly empty:
 # tmp_path, which pytest makes new for every test.
 
-@pytest.mark.parametrize("command", [["judge/judge.py", "score", "val", "scripts/answer_key.py"],
-                                     ["loop.py", "run", "1"],
-                                     ["loop.py", "holdout"],
-                                     ["loop.py", "advance"]], ids=lambda command: " ".join(command[:2]))
-def test_without_a_store_the_command_stops_with_one_line_that_says_to_run_make_data(command, tmp_path):
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["judge/judge.py", "score", "val", "scripts/answer_key.py"],
+        ["loop.py", "run", "1"],
+        ["loop.py", "holdout"],
+        ["loop.py", "advance"],
+    ],
+    ids=lambda command: " ".join(command[:2]),
+)
+def test_without_a_store_the_command_stops_with_one_line_that_says_to_run_make_data(
+    command, tmp_path
+):
     stopped = run(*command, data=tmp_path)
     assert stopped.returncode != 0
     assert stopped.stdout == ""
@@ -153,6 +177,7 @@ def test_without_a_store_the_command_stops_with_one_line_that_says_to_run_make_d
 
 
 # --- make_data.py: a pretend future, and a store that starts where the CSV files ended ---
+
 
 @pytest.fixture(scope="module")
 def made(baseline) -> dict:
@@ -172,10 +197,15 @@ def made(baseline) -> dict:
         the pretend future. "scores": the judge's validation scores for the two known models.
     """
     finished = run("scripts/make_data.py")
-    return {"run": finished, "future_months": store.months(store.FUTURE), "months": store.months(),
-            "first_month_is_a_file": (store.STORE / "month=2023-01" / "part.parquet").is_file(),
-            "days": store.read(store.months()), "january_2026": store.read(["2026-01"], store.FUTURE),
-            "scores": val_scores(baseline)}
+    return {
+        "run": finished,
+        "future_months": store.months(store.FUTURE),
+        "months": store.months(),
+        "first_month_is_a_file": (store.STORE / "month=2023-01" / "part.parquet").is_file(),
+        "days": store.read(store.months()),
+        "january_2026": store.read(["2026-01"], store.FUTURE),
+        "scores": val_scores(baseline),
+    }
 
 
 def test_make_data_runs(made):
@@ -215,6 +245,7 @@ def test_the_judge_scores_the_validation_period_from_the_store_as_it_did_from_th
 
 # --- ingest.py: time passes a whole month at a time ---------------------------------------
 
+
 @pytest.fixture(scope="module")
 def ingested(made, baseline) -> dict:
     """Step 2: run ingest.py --through 2026-06, then again with an older month, and record
@@ -237,11 +268,21 @@ def ingested(made, baseline) -> dict:
         "store_after_older_ingest": every file of the store after `--through 2026-03`.
         "scores": the judge's validation scores for the two known models, after all that.
     """
-    seen = {"store_before": file_bytes(store.STORE), "future_before": file_bytes(store.FUTURE)}
+    seen: dict[str, Any] = {
+        "store_before": file_bytes(store.STORE),
+        "future_before": file_bytes(store.FUTURE),
+    }
     seen["run"] = run("scripts/ingest.py", "--through", "2026-06")
-    seen.update({"months": store.months(), "store_after": file_bytes(store.STORE), "future_after": file_bytes(store.FUTURE),
-                 "added_month": store.read(["2026-06"]), "futures_month": store.read(["2026-06"], store.FUTURE),
-                 "data_folder_holds": sorted(path.name for path in store.DATA.iterdir())})
+    seen.update(
+        {
+            "months": store.months(),
+            "store_after": file_bytes(store.STORE),
+            "future_after": file_bytes(store.FUTURE),
+            "added_month": store.read(["2026-06"]),
+            "futures_month": store.read(["2026-06"], store.FUTURE),
+            "data_folder_holds": sorted(path.name for path in store.DATA.iterdir()),
+        }
+    )
     run("scripts/ingest.py", "--through", "2026-03")
     seen["store_after_older_ingest"] = file_bytes(store.STORE)
     seen["scores"] = val_scores(baseline)
@@ -258,7 +299,10 @@ def test_ingest_an_added_month_is_the_futures_month_day_for_day(ingested):
 
 
 def test_ingest_never_changes_a_month_the_store_already_had(ingested):
-    assert all(ingested["store_after"][name] == content for name, content in ingested["store_before"].items())
+    assert all(
+        ingested["store_after"][name] == content
+        for name, content in ingested["store_before"].items()
+    )
 
 
 def test_ingest_touches_nothing_else(ingested):
@@ -277,6 +321,7 @@ def test_after_ingest_the_judges_scores_are_the_same(ingested):
 
 
 # --- A write that fails must not leave a month that looks finished ---------------------------
+
 
 class DaysThatFailHalfway:
     """Stands in for a month's days when the disk fills up: half a file is written, then the write fails."""
@@ -333,16 +378,24 @@ def writes_failed(ingested) -> dict:
         that write, and how many the whole folder reads as afterwards.
     """
     write_that_fails("2026-07")  # a month the store doesn't have yet
-    seen = {"newest_after_failed_write": store.months()[-1]}
+    seen: dict[str, Any] = {"newest_after_failed_write": store.months()[-1]}
 
     run("scripts/ingest.py", "--through", "2026-07")
-    seen.update({"newest_after_ingest": store.months()[-1], "completed_month": store.read(["2026-07"]),
-                 "futures_month": store.read(["2026-07"], store.FUTURE)})
+    seen.update(
+        {
+            "newest_after_ingest": store.months()[-1],
+            "completed_month": store.read(["2026-07"]),
+            "futures_month": store.read(["2026-07"], store.FUTURE),
+        }
+    )
 
-    seen.update({"december_before": store.read(["2025-12"]), "days_before": len(store.read(store.months()))})
+    seen.update(
+        {"december_before": store.read(["2025-12"]), "days_before": len(store.read(store.months()))}
+    )
     write_that_fails("2025-12")
     seen["december_after"] = store.read(["2025-12"])
-    seen["days_in_whole_folder"] = len(pd.read_parquet(store.STORE))  # how lab/program.md tells the agent to read /data
+    # how lab/program.md tells the agent to read /data
+    seen["days_in_whole_folder"] = len(pd.read_parquet(store.STORE))
     return seen
 
 
@@ -365,6 +418,7 @@ def test_after_that_failed_write_the_whole_folder_still_reads_as_one_table(write
 
 # --- make_data.py with other settings: 2023-01 to 2025-12 are still the same days -----------
 
+
 @pytest.fixture(scope="module")
 def made_earlier_and_wider(writes_failed) -> dict:
     """Step 4: run make_data.py again, with --start 2021-07 --filler 2. It rebuilds the store.
@@ -382,8 +436,14 @@ def made_earlier_and_wider(writes_failed) -> dict:
     """
     finished = run("scripts/make_data.py", "--start", "2021-07", "--filler", "2")
     stored = store.months()
-    return {"run": finished, "months": stored, "first_month_columns": list(store.read(["2021-07"]).columns),
-            "days_from_2023": store.read([month for month in stored if month >= "2023-01"])[["date", "temp_forecast", "load"]]}
+    return {
+        "run": finished,
+        "months": stored,
+        "first_month_columns": list(store.read(["2021-07"]).columns),
+        "days_from_2023": store.read([month for month in stored if month >= "2023-01"])[
+            ["date", "temp_forecast", "load"]
+        ],
+    }
 
 
 @pytest.fixture(scope="module")
@@ -404,21 +464,37 @@ def made_later(made_earlier_and_wider) -> dict:
     return {"run": finished, "months": store.months(), "days": store.read(store.months())}
 
 
-def test_make_data_start_2021_07_filler_2_makes_a_store_that_starts_earlier_with_two_more_columns(made_earlier_and_wider):
+def test_make_data_start_2021_07_filler_2_makes_a_store_that_starts_earlier_with_two_more_columns(
+    made_earlier_and_wider,
+):
     stored = made_earlier_and_wider["months"]
-    assert made_earlier_and_wider["run"].returncode == 0, made_earlier_and_wider["run"].stderr[-300:]
+    assert made_earlier_and_wider["run"].returncode == 0, made_earlier_and_wider["run"].stderr[
+        -300:
+    ]
     assert (stored[0], stored[-1]) == ("2021-07", "2025-12")
-    assert made_earlier_and_wider["first_month_columns"] == ["date", "temp_forecast", "load", "filler_001", "filler_002"]
+    assert made_earlier_and_wider["first_month_columns"] == [
+        "date",
+        "temp_forecast",
+        "load",
+        "filler_001",
+        "filler_002",
+    ]
 
 
-def test_with_those_settings_2023_01_to_2025_12_are_still_the_old_full_data_csv(made_earlier_and_wider):
+def test_with_those_settings_2023_01_to_2025_12_are_still_the_old_full_data_csv(
+    made_earlier_and_wider,
+):
     days = made_earlier_and_wider["days_from_2023"]
     assert len(days) == 1096
     assert sha256_as_csv(days) == OLD_CSV_SHA256
 
 
-def test_make_data_start_2024_01_makes_a_store_that_starts_later_with_the_same_days_from_there_on(made_later, made):
+def test_make_data_start_2024_01_makes_a_store_that_starts_later_with_the_same_days_from_there_on(
+    made_later, made
+):
     original_days = made["days"]
     assert made_later["run"].returncode == 0, made_later["run"].stderr[-300:]
     assert made_later["months"][0] == "2024-01"
-    assert made_later["days"].equals(original_days[original_days.date >= "2024-01-01"].reset_index(drop=True))
+    assert made_later["days"].equals(
+        original_days[original_days.date >= "2024-01-01"].reset_index(drop=True)
+    )

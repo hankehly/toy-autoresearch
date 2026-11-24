@@ -9,6 +9,7 @@ first scored one. Then each message is one line of JSON text, arriving on stdin:
 The sandbox knows only the months it started with and what the messages have told it. The
 judge reveals a day's load only after this program has sent back its guess for that day.
 """
+
 import json
 import sys
 from pathlib import Path
@@ -22,10 +23,11 @@ pd.options.mode.copy_on_write = True
 to_judge = sys.stdout
 sys.stdout = sys.stderr  # anything model.py prints goes to the log, never to the judge
 
-import model  # imported only now, so even its prints at import time go to the log
+import model  # noqa: E402  (imported only now, so even its prints at import time go to the log)
 
 files = sorted(Path("/data").glob("month=*/part.parquet"))  # one file per month, oldest first
-past = pd.concat([pd.read_parquet(file) for file in files], ignore_index=True)  # every day so far, as one table
+# every day so far, as one table
+past = pd.concat([pd.read_parquet(file) for file in files], ignore_index=True)
 state = None  # whatever model.fit() returned
 
 for line in sys.stdin:
@@ -37,7 +39,8 @@ for line in sys.stdin:
         past = pd.concat([past, days], ignore_index=True)
 
     elif message["op"] == "fit":
-        state = model.fit(past.copy(deep=False))  # deep=False: a new table on the same memory, not a copy
+        # deep=False: a new table on the same memory, not a copy
+        state = model.fit(past.copy(deep=False))
         print(json.dumps({"ok": True}), file=to_judge, flush=True)
 
     elif message["op"] == "predict":

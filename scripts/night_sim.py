@@ -24,6 +24,7 @@ then run again with retries: some turns try again an idea that was thrown away u
 older as-of date, which the brief allows. Every seed is judged on a town of its own, so
 that no two seeds share the luck of one town's validation months.
 """
+
 import itertools
 import sys
 
@@ -44,7 +45,10 @@ N = len(DAYS)
 DOW = DAYS.dayofweek.to_numpy()
 MOY = DAYS.month.to_numpy() - 1
 # Where each month starts in DAYS. The month after the last one is here too: it is where the last one ends.
-FIRST = {month: int(DAYS.searchsorted(month.start_time)) for month in pd.period_range("2023-01", "2027-01", freq="M")}
+FIRST = {
+    month: int(DAYS.searchsorted(month.start_time))
+    for month in pd.period_range("2023-01", "2027-01", freq="M")
+}
 
 
 def periods(as_of) -> dict[str, list[pd.Period]]:
@@ -63,7 +67,11 @@ def periods(as_of) -> dict[str, list[pd.Period]]:
         the practice period ends where the validation period starts.
     """
     found, last = {}, as_of
-    for name, length in [("holdout", HOLDOUT_MONTHS), ("val", VALIDATION_MONTHS), ("practice", PRACTICE_MONTHS)]:
+    for name, length in [
+        ("holdout", HOLDOUT_MONTHS),
+        ("val", VALIDATION_MONTHS),
+        ("practice", PRACTICE_MONTHS),
+    ]:
         found[name] = list(pd.period_range(end=last, periods=length, freq="M"))
         last -= length  # the next period back ends just before this one starts
     return found
@@ -74,9 +82,10 @@ PRACTICE, VAL, HOLDOUT = (periods(START_AS_OF)[name] for name in ("practice", "v
 
 
 def make_town(seed, later_seed=None) -> tuple[np.ndarray, np.ndarray]:
-    """Make a town with make_data.py's recipe, drawn the way make_data.py draws the real one:
-    the days the toy began with from one generator, and the days after them from a second,
-    as one run to the end of the pretend future. Seeds 7 and 8 make the real toy town.
+    """Make a town with make_data.py's recipe, drawn the way make_data.py draws the real one.
+
+    The days the toy began with come from one generator, and the days after them from a
+    second, as one run to the end of the pretend future. Seeds 7 and 8 make the real toy town.
 
     Parameters
     ----------
@@ -94,12 +103,21 @@ def make_town(seed, later_seed=None) -> tuple[np.ndarray, np.ndarray]:
     began_with = pd.date_range("2023-01-01", "2025-12-31", freq="D")
     future = pd.date_range("2026-01-01", "2042-12-31", freq="D")
     first, spell = make_data.town(began_with, np.random.default_rng(seed))
-    later, _ = make_data.town(future, np.random.default_rng(seed + 1 if later_seed is None else later_seed), spell)
-    days = pd.concat([first, later]).iloc[:N]  # the simulation needs only the first of the future's years
+    later, _ = make_data.town(
+        future, np.random.default_rng(seed + 1 if later_seed is None else later_seed), spell
+    )
+    # the simulation needs only the first of the future's years
+    days = pd.concat([first, later]).iloc[:N]
     return days.temp_forecast.to_numpy(), days.load.to_numpy()
 
 
 class Town:
+    """One town's four years: its forecast temperatures (t) and loads (y).
+
+    The other fields are running totals of the loads, kept so that a model can be scored on
+    any stretch of days without adding them up again.
+    """
+
     def __init__(self, seed, later_seed=None) -> None:
         self.seed = seed
         self.t, self.y = make_town(seed, later_seed)
@@ -117,15 +135,18 @@ JUNK = {}
 
 
 def junk(jid, town) -> np.ndarray:
-    """A made-up input with no link to the load. Even ids: an events calendar (10% of days).
-    Odd ids: a slow, humidity-like series. Every parallel town gets its own fresh draw."""
+    """A made-up input with no link to the load.
+
+    Even ids: an events calendar (10% of days). Odd ids: a slow, humidity-like series.
+    Every parallel town gets its own fresh draw.
+    """
     key = (jid, town.seed)
     if key not in JUNK:
         rng = np.random.default_rng([jid, town.seed])
         if jid % 2 == 0:
             JUNK[key] = (rng.random(N) < 0.1).astype(float)
         else:
-            JUNK[key] = lfilter([np.sqrt(1 - 0.95 ** 2)], [1, -0.95], rng.normal(size=N))
+            JUNK[key] = lfilter([np.sqrt(1 - 0.95**2)], [1, -0.95], rng.normal(size=N))
     return JUNK[key]
 
 
@@ -137,19 +158,57 @@ def dow_offsets(town, h0, s) -> np.ndarray:
 
 
 def month_effects(resid, idx) -> np.ndarray:
+    """The average leftover miss in each of the 12 calendar months (0 for a month with no days).
+
+    Parameters
+    ----------
+    resid : numpy.ndarray
+        What the fitted model still missed on each training day.
+    idx : numpy.ndarray
+        Which day each of those misses belongs to.
+    """
     sums = np.bincount(MOY[idx], weights=resid, minlength=12)
     cnts = np.bincount(MOY[idx], minlength=12)
     return np.where(cnts > 0, sums / np.maximum(cnts, 1), 0.0)
 
 
 def run_month(p, town, F, cF, h0, s, e) -> np.ndarray:
+    """Fit a model on the days before one month and guess that month's loads.
+
+    Parameters
+    ----------
+    p : dict
+        The model's settings, such as TODAY or BEST.
+    town : Town
+        The town to fit and guess in.
+    F : numpy.ndarray
+        The model's inputs, one row per day: heating, cooling and any extra inputs.
+    cF : numpy.ndarray
+        The running totals of F.
+    h0 : int
+        The first day of the history the model may fit on.
+    s : int
+        The first day of the month.
+    e : int
+        The day after the month's last.
+
+    Returns
+    -------
+    numpy.ndarray
+        The guessed load for each day of the month.
+    """
     j = np.arange(s, e)
     if p["mode"] == "anchored":  # last week's level + weekday + change in inputs (turn 2's model)
         w = p["win"]
         off = dow_offsets(town, h0, s) if p["dow"] else np.zeros(7)
         i = np.arange(h0 + w, s)
-        level = lambda k: (town.cy[k] - town.cy[k - w]) / w - ((town.cD[k] - town.cD[k - w]) / w) @ off
-        change = lambda k: F[k] - (cF[k] - cF[k - w]) / w
+
+        def level(k: np.ndarray) -> np.ndarray:
+            return (town.cy[k] - town.cy[k - w]) / w - ((town.cD[k] - town.cD[k - w]) / w) @ off
+
+        def change(k: np.ndarray) -> np.ndarray:
+            return F[k] - (cF[k] - cF[k - w]) / w
+
         X, target = change(i), town.y[i] - off[DOW[i]] - level(i)
         coef = np.linalg.lstsq(X, target, rcond=None)[0] if len(i) > 30 else np.zeros(F.shape[1])
         used = coef.copy()
@@ -158,8 +217,12 @@ def run_month(p, town, F, cF, h0, s, e) -> np.ndarray:
         resid = target - X @ coef
     else:  # absolute: load straight from temperature, weekday and any extra inputs
         i = np.arange(h0, s)
-        design = lambda k: np.column_stack(
-            [np.ones(len(k)), F[k]] + ([np.eye(7)[DOW[k]][:, 1:]] if p["dow"] else []))
+
+        def design(k: np.ndarray) -> np.ndarray:
+            return np.column_stack(
+                [np.ones(len(k)), F[k]] + ([np.eye(7)[DOW[k]][:, 1:]] if p["dow"] else [])
+            )
+
         Z = design(i)
         coef = np.linalg.lstsq(Z, town.y[i], rcond=None)[0]
         used = coef.copy()
@@ -185,15 +248,19 @@ def errors(p, town, month_list) -> np.ndarray:
 
 
 def answer_key_errors(town, month_list) -> np.ndarray:
+    """Each day's miss, over these months, of the recipe that made the data."""
     idx = np.concatenate([np.arange(FIRST[m], FIRST[m + 1]) for m in month_list])
     t = town.t[idx]
     weekend = np.select([DOW[idx] == 5, DOW[idx] == 6], [-8.0, -12.0], 0.0)
-    return np.abs(town.y[idx] - (100 + 1.8 * np.maximum(0, 16 - t) + 2.5 * np.maximum(0, t - 22) + weekend))
+    return np.abs(
+        town.y[idx] - (100 + 1.8 * np.maximum(0, 16 - t) + 2.5 * np.maximum(0, t - 22) + weekend)
+    )
 
 
 # ---------------- the judge's keep rules ----------------
-DAY_PICKS = np.random.default_rng(0).integers(0, 365, size=(1000, 365))   # the old judge.py
-WEEK_PICKS = np.random.default_rng(0).integers(0, 52, size=(10000, 52))  # judge.py's re-deals of the 52 weeks
+DAY_PICKS = np.random.default_rng(0).integers(0, 365, size=(1000, 365))  # the old judge.py
+# judge.py's re-deals of the 52 weeks
+WEEK_PICKS = np.random.default_rng(0).integers(0, 52, size=(10000, 52))
 
 
 def bar(number) -> float:
@@ -214,8 +281,10 @@ def bar(number) -> float:
 
 
 def keep_by_days(old, new, number) -> tuple[bool, float]:
-    """The old rule: re-deal single days 1,000 times; keep if the candidate wins 95%,
-    whatever number it is judged as."""
+    """The old rule: re-deal single days 1,000 times; keep if the candidate wins 95%.
+
+    The bar is the same whatever number the idea is judged as.
+    """
     share = float((new[DAY_PICKS].mean(1) < old[DAY_PICKS].mean(1)).mean())
     return share >= 0.95, share
 
@@ -267,22 +336,45 @@ def try_count(judged, advanced, count_rule) -> float:
     """
     months_since = [advanced - then for then in judged]
     counts = {
-        "keep the count": len(judged),             # a try counts 1 for good
-        "reset the count": months_since.count(0),  # only the tries judged under the current as-of date count
+        "keep the count": len(judged),  # a try counts 1 for good
+        # only the tries judged under the current as-of date count
+        "reset the count": months_since.count(0),
         # a try counts for the share of the months it was judged on that are still in the
         # validation period: the loop's rule, as try_count() in loop.py works it out
-        "tries fade": sum(max(0, VALIDATION_MONTHS - months) for months in months_since) / VALIDATION_MONTHS,
+        "tries fade": sum(max(0, VALIDATION_MONTHS - months) for months in months_since)
+        / VALIDATION_MONTHS,
     }
     return counts[count_rule]
 
 
 # ---------------- the robot ----------------
-TODAY = dict(mode="anchored", th=18.0, tc=18.0, win=7, hist=99, shrink=1.0, dow=True, moy=False, junk=())  # turn 2
+# turn 2
+TODAY = dict(
+    mode="anchored", th=18.0, tc=18.0, win=7, hist=99, shrink=1.0, dow=True, moy=False, junk=()
+)
 BEST = dict(TODAY, mode="absolute", th=16.0, tc=22.0)  # about as good as this kind of model gets
 SETTINGS = ["mode", "th", "tc", "win", "hist", "shrink", "dow", "moy"]
 
 
 def propose(p, idea, rng, fresh_ids) -> list[dict]:
+    """The versions of one idea that the robot tries privately: up to 7.
+
+    Parameters
+    ----------
+    p : dict
+        The champion's settings.
+    idea : str
+        "new input", or the name of the setting to change (one of SETTINGS).
+    rng : numpy.random.Generator
+        Where the random tweaks come from.
+    fresh_ids : Iterator[int]
+        Ids for noise inputs no earlier turn has used.
+
+    Returns
+    -------
+    list[dict]
+        One settings dict per version.
+    """
     if idea == "new input":
         return [dict(p, junk=p["junk"] + (next(fresh_ids),)) for _ in range(7)]
     if idea == "mode":
@@ -293,13 +385,25 @@ def propose(p, idea, rng, fresh_ids) -> list[dict]:
             out.append(dict(flipped, th=round(th, 1), tc=round(rng.uniform(max(th, 12), 30), 1)))
         return out
     if idea == "th":
-        return [dict(p, th=round(float(np.clip(p["th"] + rng.normal(0, 2.5), 8, p["tc"])), 1)) for _ in range(7)]
+        return [
+            dict(p, th=round(float(np.clip(p["th"] + rng.normal(0, 2.5), 8, p["tc"])), 1))
+            for _ in range(7)
+        ]
     if idea == "tc":
-        return [dict(p, tc=round(float(np.clip(p["tc"] + rng.normal(0, 2.5), p["th"], 30)), 1)) for _ in range(7)]
+        return [
+            dict(p, tc=round(float(np.clip(p["tc"] + rng.normal(0, 2.5), p["th"], 30)), 1))
+            for _ in range(7)
+        ]
     if idea == "shrink":
-        return [dict(p, shrink=round(float(np.clip(p["shrink"] + rng.normal(0, 0.1), 0.5, 1.5)), 2)) for _ in range(7)]
+        return [
+            dict(p, shrink=round(float(np.clip(p["shrink"] + rng.normal(0, 0.1), 0.5, 1.5)), 2))
+            for _ in range(7)
+        ]
     if idea == "win":
-        return [dict(p, win=int(w)) for w in rng.choice([w for w in range(3, 29) if w != p["win"]], 7, replace=False)]
+        return [
+            dict(p, win=int(w))
+            for w in rng.choice([w for w in range(3, 29) if w != p["win"]], 7, replace=False)
+        ]
     if idea == "hist":
         return [dict(p, hist=h) for h in [6, 9, 12, 18, 99] if h != p["hist"]]
     return [dict(p, **{idea: not p[idea]})]  # dow, moy: flip
@@ -320,7 +424,10 @@ def what_changed(old, new) -> dict:
     dict
         The settings the idea set, by name, and under "junk" the made-up inputs it added.
     """
-    return {**{s: new[s] for s in SETTINGS if new[s] != old[s]}, "junk": new["junk"][len(old["junk"]):]}
+    return {
+        **{s: new[s] for s in SETTINGS if new[s] != old[s]},
+        "junk": new["junk"][len(old["junk"]) :],
+    }
 
 
 def with_change(p, changed) -> dict:
@@ -338,49 +445,82 @@ def with_change(p, changed) -> dict:
     dict
         The champion with those settings set, and those made-up inputs added if it lacks them.
     """
-    return {**p, **changed, "junk": p["junk"] + tuple(jid for jid in changed["junk"] if jid not in p["junk"])}
+    return {
+        **p,
+        **changed,
+        "junk": p["junk"] + tuple(jid for jid in changed["junk"] if jid not in p["junk"]),
+    }
 
 
 class Lab:
+    """The toy town, the parallel towns that give the truth, and every score measured so far."""
+
     def __init__(self, universes=100) -> None:
-        self.town = Town(7)  # the real toy town: the one a run is judged on, unless judge_on() names another
+        # the real toy town: the one a run is judged on, unless judge_on() names another
+        self.town = Town(7)
         # The parallel towns, where truth is measured. Each gets a second generator that no other
         # town uses: left to seed + 1, it would be the generator of the next town's first days.
         self.multiverse = [Town(1000 + u, 2000 + u) for u in range(universes)]
         self.cache = {}
 
-    def score(self, p, what, as_of=START_AS_OF) -> np.ndarray | float:
-        """Score a model under an as-of date. Each score is worked out once and remembered.
+    def score(self, p, period, as_of=START_AS_OF) -> np.ndarray:
+        """Score a model on one period of the town the run is judged on.
+
+        Each score is worked out once and remembered.
 
         Parameters
         ----------
         p : dict
             The model.
-        what : str
-            "practice", "val" or "holdout": that period of the town the run is judged on.
-            "truth": the validation and holdout periods together, in the parallel towns.
+        period : str
+            "practice", "val" or "holdout".
         as_of : pd.Period
             The as-of date the periods are counted back from.
 
         Returns
         -------
-        np.ndarray or float
-            For a period, the model's miss on each of its days. For "truth", its average
-            miss over the parallel towns.
+        np.ndarray
+            The model's miss on each day of the period.
         """
-        key = (tuple(sorted(p.items())), what, as_of)
+        key = (tuple(sorted(p.items())), period, as_of)
+        if key not in self.cache:
+            self.cache[key] = errors(p, self.town, periods(as_of)[period])
+        return self.cache[key]
+
+    def truth(self, p, as_of=START_AS_OF) -> float:
+        """Measure a model's true error. Each truth is worked out once and remembered.
+
+        Parameters
+        ----------
+        p : dict
+            The model.
+        as_of : pd.Period
+            The as-of date the periods are counted back from.
+
+        Returns
+        -------
+        float
+            The model's average miss over the validation and holdout periods together, in the
+            parallel towns.
+        """
+        key = (tuple(sorted(p.items())), "truth", as_of)
         if key not in self.cache:
             months = periods(as_of)
-            if what == "truth":
-                self.cache[key] = float(np.mean([errors(p, t, months["val"] + months["holdout"]).mean()
-                                                 for t in self.multiverse]))
-            else:
-                self.cache[key] = errors(p, self.town, months[what])
+            self.cache[key] = float(
+                np.mean(
+                    [
+                        errors(p, t, months["val"] + months["holdout"]).mean()
+                        for t in self.multiverse
+                    ]
+                )
+            )
         return self.cache[key]
 
     def judge_on(self, town) -> None:
-        """Judge the runs that follow on another town. The scores so far were the last town's,
-        so they are forgotten. The truths stay, because the parallel towns stay.
+        """Judge the runs that follow on another town.
+
+        The scores so far were the last town's, so they are forgotten. The truths stay,
+        because the parallel towns stay.
 
         Parameters
         ----------
@@ -388,11 +528,25 @@ class Lab:
             The town whose practice, validation and holdout periods the next runs are scored on.
         """
         self.town = town
-        self.cache = {(model, what, as_of): score for (model, what, as_of), score in self.cache.items()
-                      if what == "truth"}
+        self.cache = {
+            (model, what, as_of): score
+            for (model, what, as_of), score in self.cache.items()
+            if what == "truth"
+        }
 
-    def run(self, start, private, rule, seed, new_input_share=0.5, turns=300,
-            nights=1, count_rule="tries fade", retry_share=0.0, first_id=0) -> pd.DataFrame:
+    def run(
+        self,
+        start,
+        private,
+        rule,
+        seed,
+        new_input_share=0.5,
+        turns=300,
+        nights=1,
+        count_rule="tries fade",
+        retry_share=0.0,
+        first_id=0,
+    ) -> pd.DataFrame:
         """Simulate a run of ideas: one night, or several nights with a one-month advance between them.
 
         Parameters
@@ -431,19 +585,24 @@ class Lab:
         JUNK.clear()
         # Forget the scores of models with a made-up input (the next run makes its own), and
         # every list of daily misses under a later as-of date (few models come up there twice).
-        self.cache = {(model, what, as_of): score for (model, what, as_of), score in self.cache.items()
-                      if not dict(model)["junk"] and (what == "truth" or as_of == START_AS_OF)}
+        self.cache = {
+            (model, what, as_of): score
+            for (model, what, as_of), score in self.cache.items()
+            if not dict(model)["junk"] and (what == "truth" or as_of == START_AS_OF)
+        }
         rng = np.random.default_rng(seed)
         fresh_ids = itertools.count(first_id)
         last = START_AS_OF + nights - 1  # the as-of date of the last night
         champ, judged, thrown, rows = start, [], [], []
         for turn in range(1, turns + 1):
-            advanced = (turn - 1) // (turns // nights)  # how many months the as-of date has advanced so far
+            # how many months the as-of date has advanced so far
+            advanced = (turn - 1) // (turns // nights)
             as_of = START_AS_OF + advanced
 
             # the turn's idea: a retry of a thrown-away idea, or a new idea in up to 7 versions
             again = None  # the thrown-away idea this turn tries again, if it is a retry
-            waiting = [old for old in thrown if old["tried"] < advanced]  # not tried yet under this as-of date
+            # not tried yet under this as-of date
+            waiting = [old for old in thrown if old["tried"] < advanced]
             if retry_share and waiting and rng.random() < retry_share:
                 idea, again = "retry", waiting[rng.integers(len(waiting))]
                 again["tried"] = advanced
@@ -452,7 +611,15 @@ class Lab:
                 if rng.random() < new_input_share:
                     idea = "new input"
                 else:
-                    idea = str(rng.choice([s for s in SETTINGS if not (s == "win" and champ["mode"] == "absolute")]))
+                    idea = str(
+                        rng.choice(
+                            [
+                                s
+                                for s in SETTINGS
+                                if not (s == "win" and champ["mode"] == "absolute")
+                            ]
+                        )
+                    )
                 variants = propose(champ, idea, rng, fresh_ids)
 
             # the robot tests the versions privately, and submits the best if it beats the champion there
@@ -465,20 +632,38 @@ class Lab:
                 submitted = True
                 number = try_count(judged, advanced, count_rule) + 1
                 judged.append(advanced)
-                kept, share = rule(self.score(champ, "val", as_of), self.score(best, "val", as_of), number)
+                kept, share = rule(
+                    self.score(champ, "val", as_of), self.score(best, "val", as_of), number
+                )
                 if kept:
-                    truth_change = self.score(best, "truth", last) - self.score(champ, "truth", last)
-                    val_change = self.score(best, "val", as_of).mean() - self.score(champ, "val", as_of).mean()
+                    truth_change = self.truth(best, last) - self.truth(champ, last)
+                    val_change = (
+                        self.score(best, "val", as_of).mean()
+                        - self.score(champ, "val", as_of).mean()
+                    )
                     champ = best
                     if again:
                         thrown.remove(again)
                 elif not again:
                     thrown.append({"change": what_changed(champ, best), "tried": advanced})
-            rows.append(dict(turn=turn, idea=idea, submitted=submitted, kept=kept, win_share=share,
-                             truth_change=truth_change, val=self.score(champ, "val", as_of).mean(),
-                             holdout=self.score(champ, "holdout", as_of).mean(), truth=self.score(champ, "truth", last),
-                             inputs=len(champ["junk"]), champion=str(champ), as_of=str(as_of),
-                             val_change=val_change, tries=try_count(judged, advanced, count_rule)))
+            rows.append(
+                dict(
+                    turn=turn,
+                    idea=idea,
+                    submitted=submitted,
+                    kept=kept,
+                    win_share=share,
+                    truth_change=truth_change,
+                    val=self.score(champ, "val", as_of).mean(),
+                    holdout=self.score(champ, "holdout", as_of).mean(),
+                    truth=self.truth(champ, last),
+                    inputs=len(champ["junk"]),
+                    champion=str(champ),
+                    as_of=str(as_of),
+                    val_change=val_change,
+                    tries=try_count(judged, advanced, count_rule),
+                )
+            )
         return pd.DataFrame(rows)
 
 
@@ -493,19 +678,25 @@ SCENARIOS = {
     "from the best model": BEST,
 }
 
-SEEDS = 30         # in `advance`, each kind of run is simulated this many times, each time on a town of its own
-NIGHTS = 12        # there, the 300 ideas are spread over this many nights, a one-month advance apart
-RETRY_SHARE = 0.3  # in the runs with retries: after an advance, 3 turns in 10 try a thrown-away idea again
+SEEDS = 30  # in `advance`, each kind of run is simulated this many times, each time on a town of its own
+NIGHTS = 12  # there, the 300 ideas are spread over this many nights, a one-month advance apart
+RETRY_SHARE = (
+    0.3  # in the runs with retries: after an advance, 3 turns in 10 try a thrown-away idea again
+)
 # The runs `advance` compares, each of 300 ideas, and the settings Lab.run() gets for them.
 RUNS = {"one night of 300, no advance": dict()}
 RUNS |= {f"12 nights of 25, {rule}": dict(nights=NIGHTS, count_rule=rule) for rule in COUNT_RULES}
-RUNS |= {f"with retries, {rule}": dict(nights=NIGHTS, count_rule=rule, retry_share=RETRY_SHARE) for rule in COUNT_RULES}
+RUNS |= {
+    f"with retries, {rule}": dict(nights=NIGHTS, count_rule=rule, retry_share=RETRY_SHARE)
+    for rule in COUNT_RULES
+}
 
 
 def compare_systems(lab) -> None:
-    """Simulate every night on the real toy town, under one as-of date, for the old toy, each
-    of its two fixes alone, and both together, and print what was kept. Every turn is saved
-    in night_sim.csv.
+    """Simulate every night on the real toy town, under one as-of date, and print what was kept.
+
+    The nights are run for the old toy, each of its two fixes alone, and both together.
+    Every turn is saved in night_sim.csv.
 
     Parameters
     ----------
@@ -513,39 +704,58 @@ def compare_systems(lab) -> None:
         The lab the nights are simulated in.
     """
     key_truth = float(np.mean([answer_key_errors(t, VAL + HOLDOUT).mean() for t in lab.multiverse]))
-    print(f"answer key: validation {answer_key_errors(lab.town, VAL).mean():.3f}  "
-          f"holdout {answer_key_errors(lab.town, HOLDOUT).mean():.3f}  truth {key_truth:.3f}")
+    print(
+        f"answer key: validation {answer_key_errors(lab.town, VAL).mean():.3f}  "
+        f"holdout {answer_key_errors(lab.town, HOLDOUT).mean():.3f}  truth {key_truth:.3f}"
+    )
     nights = []
     for scenario, start in SCENARIOS.items():
-        s = {w: lab.score(start, w) for w in ("val", "holdout", "truth")}
-        print(f"\n{scenario}: start validation {s['val'].mean():.3f}  "
-              f"holdout {s['holdout'].mean():.3f}  truth {s['truth']:.3f}")
+        start_val, start_truth = lab.score(start, "val").mean(), lab.truth(start)
+        print(
+            f"\n{scenario}: start validation {start_val:.3f}  "
+            f"holdout {lab.score(start, 'holdout').mean():.3f}  truth {start_truth:.3f}"
+        )
         for name, (private, rule) in SYSTEMS.items():
             for seed in range(10):
                 df = lab.run(start, private, rule, seed)
                 df["scenario"], df["system"], df["seed"] = scenario, name, seed
-                df["ledger_gain"] = s["val"].mean() - df.val
-                df["true_gain"] = s["truth"] - df.truth
+                df["ledger_gain"] = start_val - df.val
+                df["true_gain"] = start_truth - df.truth
                 nights.append(df)
         part = pd.concat([n for n in nights if n.scenario.iloc[0] == scenario])
         end, keeps = part[part.turn == 300], part[part.kept]
-        print(pd.DataFrame({
-            "kept": keeps.groupby("system").size().reindex(SYSTEMS, fill_value=0) / 10,
-            "noise inputs kept": end.groupby("system").inputs.mean(),
-            "flukes kept": keeps[keeps.truth_change >= 0].groupby("system").size().reindex(SYSTEMS, fill_value=0) / 10,
-            "ledger gain": end.groupby("system").ledger_gain.mean(),
-            "true gain": end.groupby("system").true_gain.mean(),
-            "final holdout": end.groupby("system").holdout.mean(),
-        }).reindex(SYSTEMS).round(3).to_string())
+        print(
+            pd.DataFrame(
+                {
+                    "kept": keeps.groupby("system").size().reindex(list(SYSTEMS), fill_value=0)
+                    / 10,
+                    "noise inputs kept": end.groupby("system").inputs.mean(),
+                    "flukes kept": keeps[keeps.truth_change >= 0]
+                    .groupby("system")
+                    .size()
+                    .reindex(list(SYSTEMS), fill_value=0)
+                    / 10,
+                    "ledger gain": end.groupby("system").ledger_gain.mean(),
+                    "true gain": end.groupby("system").true_gain.mean(),
+                    "final holdout": end.groupby("system").holdout.mean(),
+                }
+            )
+            .reindex(list(SYSTEMS))
+            .round(3)
+            .to_string()
+        )
     pd.concat(nights).to_csv("night_sim.csv", index=False)
-    print("\nAverages over 10 nights of 300 turns each. MWh per day; gain = how much the average miss shrank.")
+    print(
+        "\nAverages over 10 nights of 300 turns each. MWh per day; gain = how much the average miss shrank."
+    )
     print("'flukes' = kept changes that made the true error worse.")
 
 
 def compare_counts(lab) -> None:
-    """Spend the same 300 ideas in one night and in 12 nights with advances, under the three
-    rules for the try count, without and with retries, and print what was kept. Both of the
-    robot's fixes are on. Every turn is saved in night_sim_advance.csv.
+    """Spend the same 300 ideas in one night and in 12 nights with advances, and print what was kept.
+
+    The 12 nights are run under the three rules for the try count, without and with retries.
+    Both of the robot's fixes are on. Every turn is saved in night_sim_advance.csv.
 
     Parameters
     ----------
@@ -560,23 +770,40 @@ def compare_counts(lab) -> None:
             # so the seeds are separate experiments: none shares another's luck.
             lab.judge_on(Town(4000 + seed, 5000 + seed))
             for name, settings in RUNS.items():
-                df = lab.run(start, "practice", keep_by_weeks, seed, first_id=10_000 * seed, **settings)
+                df = lab.run(
+                    start, "practice", keep_by_weeks, seed, first_id=10_000 * seed, **settings
+                )
                 df["scenario"], df["run"], df["seed"] = scenario, name, seed
                 runs.append(df)
                 keeps = df[df.kept]
-                summary.append({"run": name, "judged": df.submitted.sum(), "kept": len(keeps),
-                                "lucky keeps": (keeps.truth_change >= 0).sum(),
-                                "ledger gain": -keeps.val_change.sum(), "true gain": -keeps.truth_change.sum(),
-                                "bar at the end": 100 * bar(df.tries.iloc[-1] + 1)})
+                summary.append(
+                    {
+                        "run": name,
+                        "judged": df.submitted.sum(),
+                        "kept": len(keeps),
+                        "lucky keeps": (keeps.truth_change >= 0).sum(),
+                        "ledger gain": -keeps.val_change.sum(),
+                        "true gain": -keeps.truth_change.sum(),
+                        "bar at the end": 100 * bar(df.tries.iloc[-1] + 1),
+                    }
+                )
         print(f"\n{scenario}")
         print(pd.DataFrame(summary).groupby("run", sort=False).mean().round(3).to_string())
     pd.concat(runs).to_csv("night_sim_advance.csv", index=False)
     print(f"\nAverages over {SEEDS} runs of 300 ideas each, every run judged on a town of its own.")
     print("MWh per day; gain = how much the average miss shrank.")
-    print("'judged' = ideas that reached the judge. 'lucky keeps' = kept changes that did not make the true error smaller.")
-    print("From the best model, read 'kept': it is taken to be as good as this kind of model gets, so every keep is a lucky one.")
-    print("'ledger gain' = the gains of the kept ideas on the validation period they were judged on, added up.")
-    print("'true gain' = the same ideas' gains in the 100 parallel towns, on the months of the run's last as-of date.")
+    print(
+        "'judged' = ideas that reached the judge. 'lucky keeps' = kept changes that did not make the true error smaller."
+    )
+    print(
+        "From the best model, read 'kept': it is taken to be as good as this kind of model gets, so every keep is a lucky one."
+    )
+    print(
+        "'ledger gain' = the gains of the kept ideas on the validation period they were judged on, added up."
+    )
+    print(
+        "'true gain' = the same ideas' gains in the 100 parallel towns, on the months of the run's last as-of date."
+    )
     print("'bar at the end' = the share of reshuffles (%) the 301st idea would have to win.")
 
 

@@ -1,4 +1,4 @@
-"""Do ten changes that are each inside the margin of luck add up to a provable gain?
+"""Test whether ten changes that are each inside the margin of luck add up to a provable gain.
 
     uv run scripts/bundle_sim.py      # about 30 seconds
 
@@ -16,12 +16,13 @@ First run (MWh; "luck" = one standard deviation of the measured gain):
 Real gains add up while luck grows only with the square root of the number of pieces. But luck
 that was picked on the scored year adds up too, so pick the pieces on data the test doesn't use.
 """
+
 import numpy as np
 import pandas as pd
 
 import night_sim as S
 
-BETA = 1.4                       # MWh added on each event day
+BETA = 1.4  # MWh added on each event day
 EVENTS = tuple(range(2, 22, 2))  # even ids are event calendars (10% of days) in night_sim.junk
 
 
@@ -45,29 +46,55 @@ class EventTown(S.Town):
 
 
 def compare(old, new) -> tuple[float, float, bool]:
-    """Gain (positive = better), luck (one standard deviation of the gain), and whether the
-    gain clears the old 95% bar (about 1.65 times the luck)."""
+    """Measure a change: its gain, its luck, and whether the gain clears the old 95% bar.
+
+    Returns
+    -------
+    tuple[float, float, bool]
+        The gain (positive = better), the luck (one standard deviation of the gain), and
+        whether the gain clears the old 95% bar (about 1.65 times the luck).
+    """
     d = new - old
     luck = d.std() / np.sqrt(len(d))
     return -d.mean(), luck, (-d.mean() / luck) >= 1.645
 
 
 def case_a(worlds=100) -> pd.DataFrame:
+    """Case A: ten real small effects, each added alone and then all ten as one bundle.
+
+    Parameters
+    ----------
+    worlds : int
+        How many towns to average over. Each is scored on its own validation year.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Two rows, "one real change" and "ten real, bundled", with the average gain, the
+        average luck, and the share of times the gain cleared the bar.
+    """
     rows = []
     for u in range(worlds):
         w = EventTown(1000 + u)
         base = S.errors(S.BEST, w, S.VAL)
         for jid in EVENTS:
-            rows.append(("one real change", *compare(base, S.errors(dict(S.BEST, junk=(jid,)), w, S.VAL))))
-        rows.append(("ten real, bundled", *compare(base, S.errors(dict(S.BEST, junk=EVENTS), w, S.VAL))))
+            rows.append(
+                ("one real change", *compare(base, S.errors(dict(S.BEST, junk=(jid,)), w, S.VAL)))
+            )
+        rows.append(
+            ("ten real, bundled", *compare(base, S.errors(dict(S.BEST, junk=EVENTS), w, S.VAL)))
+        )
     df = pd.DataFrame(rows, columns=["what", "gain", "luck", "clears"])
     return df.groupby("what", sort=False).mean()
 
 
 def near_miss_bundle(world, pick_on, first_id, truth_towns) -> tuple[float, float, bool, float]:
-    """Collect 10 near-misses: the best of 7 noise inputs versus the best model, chosen on
-    `pick_on`. When picking on the scored year, keep only ones that look better there but
-    don't clear the bar. Then score the bundle of all 10 on the scored year and in truth."""
+    """Collect 10 near-misses, then score the bundle of all 10.
+
+    A near-miss is the best of 7 noise inputs versus the best model, chosen on `pick_on`.
+    When picking on the scored year, keep only ones that look better there but don't clear
+    the bar. The bundle is scored on the scored year and in truth.
+    """
     base_val = S.errors(S.BEST, world, S.VAL)
     base_pick = S.errors(S.BEST, world, pick_on).mean()
     chosen, next_id = [], first_id
@@ -84,14 +111,38 @@ def near_miss_bundle(world, pick_on, first_id, truth_towns) -> tuple[float, floa
         chosen.append(j)
     bundle = dict(S.BEST, junk=tuple(chosen))
     gain, luck, clears = compare(base_val, S.errors(bundle, world, S.VAL))
-    true_gain = -np.mean([S.errors(bundle, t, S.VAL + S.HOLDOUT).mean()
-                          - S.errors(S.BEST, t, S.VAL + S.HOLDOUT).mean() for t in truth_towns])
-    return gain, luck, clears, true_gain
+    true_gain = -np.mean(
+        [
+            S.errors(bundle, t, S.VAL + S.HOLDOUT).mean()
+            - S.errors(S.BEST, t, S.VAL + S.HOLDOUT).mean()
+            for t in truth_towns
+        ]
+    )
+    return gain, luck, clears, float(true_gain)
 
 
 def case_bc(pick_on, worlds=40) -> pd.Series:
+    """Cases B and C: ten pure-noise near-misses, bundled.
+
+    Parameters
+    ----------
+    pick_on : list[pandas.Timestamp]
+        The months the pieces are picked on: the scored year (case B) or the practice year
+        (case C).
+    worlds : int
+        How many towns to average over.
+
+    Returns
+    -------
+    pandas.Series
+        The bundle's average gain on the scored year, its average luck, the share of times
+        it cleared the bar, and its average true gain.
+    """
     truth_towns = [S.Town(3000 + u) for u in range(20)]
-    rows = [near_miss_bundle(S.Town(2000 + i), pick_on, 10_001 + 1000 * i, truth_towns) for i in range(worlds)]
+    rows = [
+        near_miss_bundle(S.Town(2000 + i), pick_on, 10_001 + 1000 * i, truth_towns)
+        for i in range(worlds)
+    ]
     return pd.DataFrame(rows, columns=["gain", "luck", "clears", "true gain"]).mean()
 
 

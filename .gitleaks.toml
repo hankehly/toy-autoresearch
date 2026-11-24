@@ -1,0 +1,12 @@
+# Settings for gitleaks, which stops a commit that holds a secret (see .pre-commit-config.yaml).
+# Its built-in rules know about 200 kinds of key, but not the one this repo has: the Claude
+# Code login token that `claude setup-token` prints, which lives in .env for `loop.py run`.
+
+[extend]
+useDefault = true  # keep the built-in rules, and add the one below
+
+[[rules]]
+id = "claude-code-login-token"
+description = "A Claude Code login token (CLAUDE_CODE_OAUTH_TOKEN)"
+regex = '''sk-ant-oat\d\d-[A-Za-z0-9_\-]{20,}'''
+keywords = ["sk-ant-oat"]

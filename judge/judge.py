@@ -28,6 +28,7 @@ ledger records a measurement the agent can't touch.
 
 The data comes from the data store (store.py). `uv run scripts/make_data.py` builds it.
 """
+
 import json
 import os
 import subprocess
@@ -38,16 +39,16 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import store  # noqa: E402  (imported after the path is set: store.py lives in the repo root, not here)
+import store  # imported after the path is set: store.py lives in the repo root, not here
 
 # The as-of date: one line holding one month. Only `loop.py advance` and `loop.py reset`
 # write it. TOY_AS_OF names a different file; the tests use it to work on a temporary one.
 AS_OF = Path(os.environ.get("TOY_AS_OF") or Path(__file__).resolve().parent.parent / "as_of.txt")
 
 # How long each period is, in months. periods() counts them back from the as-of date.
-HOLDOUT_MONTHS = 6      # the newest months: scored once, at the end
+HOLDOUT_MONTHS = 6  # the newest months: scored once, at the end
 VALIDATION_MONTHS = 12  # the months before those: they decide what's kept
-PRACTICE_MONTHS = 12    # the months before those: the agent's own, it has these answers
+PRACTICE_MONTHS = 12  # the months before those: the agent's own, it has these answers
 # Every earlier month in the store is the training period.
 
 # A scored period in 7-day blocks. Any 12 months are 365 or 366 days, which is 51 blocks of
@@ -80,7 +81,11 @@ def periods() -> dict[str, list[str]]:
     """
     as_of = pd.Period(AS_OF.read_text().strip(), "M")
     found, last = {}, as_of
-    for name, length in [("holdout", HOLDOUT_MONTHS), ("val", VALIDATION_MONTHS), ("practice", PRACTICE_MONTHS)]:
+    for name, length in [
+        ("holdout", HOLDOUT_MONTHS),
+        ("val", VALIDATION_MONTHS),
+        ("practice", PRACTICE_MONTHS),
+    ]:
         found[name] = [str(month) for month in pd.period_range(end=last, periods=length, freq="M")]
         last -= length  # the next period back ends just before this one starts
     stored = store.months()
@@ -88,9 +93,12 @@ def periods() -> dict[str, list[str]]:
     if stored[-1] < str(as_of):
         sys.exit(f"The data store ends at {stored[-1]}, before the as-of date, {as_of}.")
     if not found["training"]:
-        sys.exit(f"The data store has no month before the practice period, {found['practice'][0]} to "
-                 f"{found['practice'][-1]}, so a model would have nothing to learn from. The as-of date is {as_of}.")
-    return {name: found[name] for name in ("training", "practice", "val", "holdout")}  # oldest period first
+        sys.exit(
+            f"The data store has no month before the practice period, {found['practice'][0]} to "
+            f"{found['practice'][-1]}, so a model would have nothing to learn from. The as-of date is {as_of}."
+        )
+    # oldest period first
+    return {name: found[name] for name in ("training", "practice", "val", "holdout")}
 
 
 def open_model_sandbox(model_path, period) -> subprocess.Popen:
@@ -111,17 +119,21 @@ def open_model_sandbox(model_path, period) -> subprocess.Popen:
         The running sandbox. The judge talks to it through stdin and stdout.
     """
     first_scored = periods()[period][0]
-    return subprocess.Popen([
+    # fmt: off
+    # (the formatter leaves this list alone: each line is one setting, with its reason beside it)
+    command = [
         "docker", "run", "--rm", "-i", "--pull", "never",
-        "--network", "none",                                          # no internet
-        "--read-only", "--tmpfs", "/tmp",                             # can't change any file; /tmp vanishes afterwards
-        "--user", "65534:65534",                                      # runs as "nobody", not as you
+        "--network", "none",                                         # no internet
+        "--read-only", "--tmpfs", "/tmp",                            # can't change any file; /tmp vanishes afterwards
+        "--user", "65534:65534",                                     # runs as "nobody", not as you
         "--cap-drop", "ALL", "--security-opt", "no-new-privileges",  # can't give itself extra powers
-        "--cpus", "2", "--pids-limit", "64",                          # can't hog your Mac's processors (no memory cap: real data is big)
-        "-v", f"{Path(model_path).resolve()}:/sandbox/model.py:ro",   # its one file of code, read-only
+        "--cpus", "2", "--pids-limit", "64",                         # can't hog your Mac's processors (no memory cap: real data is big)
+        "-v", f"{Path(model_path).resolve()}:/sandbox/model.py:ro",  # its one file of code, read-only
         *store.mounts([month for month in store.months() if month < first_scored]),  # its history, read-only at /data
         "toy-model-sandbox",
-    ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    ]
+    # fmt: on
+    return subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 
 
 def send(sandbox, message) -> None:
@@ -149,11 +161,13 @@ def as_rows(days) -> list[dict]:
 
 def daily_misses(model_path, period) -> np.ndarray:
     """Walk forward one month at a time, like real life.
+
     fit() learns from every day before the month. predict() sees every day before today,
     plus every column of today except its load. Each day's load is revealed only after the
     model has guessed it.
     The sandbox starts with the months before the first scored one already in it, so the
-    judge reads only the scored months, one at a time."""
+    judge reads only the scored months, one at a time.
+    """
     sandbox = open_model_sandbox(model_path, period)
     misses = []
     for month in periods()[period]:
@@ -165,16 +179,20 @@ def daily_misses(model_path, period) -> np.ndarray:
                 raise ValueError(f"prediction for {day['date']} is not a number")
             misses.append(abs(day["load"] - guess))
             send(sandbox, {"op": "reveal", "days": [day]})  # only now is today the past
+    assert sandbox.stdin is not None  # open_model_sandbox() opens it as a pipe
     sandbox.stdin.close()  # no more messages: the runner finishes and Docker removes the container
     sandbox.wait()
     return np.array(misses)
 
 
 def win_share(old, new) -> float:
-    """Re-deal the period's 52 weeks 10,000 times (some weeks twice, some not at all) and return
-    the share of re-deals in which the new model's average miss is the lower one.
+    """Re-deal the period's 52 weeks 10,000 times and return the share the new model wins.
+
+    A re-deal draws 52 weeks, some twice and some not at all. The new model wins a re-deal
+    when its average miss is the lower one.
     Whole weeks move together because neighbouring days share weather.
-    lab/practice.py carries a copy of this function. Change them together."""
+    lab/practice.py carries a copy of this function. Change them together.
+    """
     week = np.minimum(np.arange(len(old)) // 7, WEEKS - 1)
     gaps = np.bincount(week, weights=new - old, minlength=WEEKS)
     days = np.bincount(week, minlength=WEEKS)
@@ -204,8 +222,10 @@ def bar(number) -> float:
 
 
 def compare(champion_path, candidate_path, number) -> dict:
-    """Give the verdict on the validation period. An idea is kept only if its average miss is
-    the lower one in at least bar(number) of the re-deals.
+    """Give the verdict on the validation period.
+
+    An idea is kept only if its average miss is the lower one in at least bar(number) of the
+    re-deals.
 
     Parameters
     ----------
@@ -236,8 +256,10 @@ def compare(champion_path, candidate_path, number) -> dict:
 
 
 def practice(champion_path, candidate_path) -> dict:
-    """The same comparison on the practice period, with no bar and no verdict. The loop logs
-    these numbers, so the ledger never depends on the ones the agent reports."""
+    """The same comparison on the practice period, with no bar and no verdict.
+
+    The loop logs these numbers, so the ledger never depends on the ones the agent reports.
+    """
     old = daily_misses(champion_path, "practice")
     new = daily_misses(candidate_path, "practice")
     return {
@@ -251,7 +273,11 @@ if __name__ == "__main__":
     store.need()
     if sys.argv[1] == "score":
         period, path = sys.argv[2], sys.argv[3]
-        print(json.dumps({"period": period, "mae": round(float(daily_misses(path, period).mean()), 3)}))
+        print(
+            json.dumps(
+                {"period": period, "mae": round(float(daily_misses(path, period).mean()), 3)}
+            )
+        )
     elif sys.argv[1] == "compare":
         print(json.dumps(compare(sys.argv[2], sys.argv[3], float(sys.argv[4]))))
     elif sys.argv[1] == "practice":
