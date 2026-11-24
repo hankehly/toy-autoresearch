@@ -1,0 +1,102 @@
+{
+  "seconds": 15,
+  "response": {
+    "duration_api_ms": 12815,
+    "stop_reason": "tool_use",
+    "session_id": "b7910555-2a3a-41c3-b2cd-51424504cd23",
+    "total_cost_usd": 0.10423390000000002,
+    "usage": {
+      "input_tokens": 10,
+      "cache_creation_input_tokens": 21487,
+      "cache_read_input_tokens": 76859,
+      "output_tokens": 1058,
+      "output_tokens_details": {
+        "thinking_tokens": 281
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 21487,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 10,
+        "outputTokens": 1058,
+        "cacheReadInputTokens": 76859,
+        "cacheCreationInputTokens": 21487,
+        "webSearchRequests": 0,
+        "costUSD": 0.10423390000000002,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 281,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 21487,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 6,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"idea\":\"Add half the last-28-day mean residual as level correction\",\"lesson\":\"A slowly moving 28-day mean residual gives a small gain (3.036 to 2.995) that clears practice, but it's probably too small for the judge's bar.\",\"practice\":{\"champion_mae\":3.036,\"model_mae\":2.995,\"wins_pct\":93.76},\"submit\":true}",
+    "structured_output": {
+      "idea": "Add half the last-28-day mean residual as level correction",
+      "lesson": "A slowly moving 28-day mean residual gives a small gain (3.036 to 2.995) that clears practice, but it's probably too small for the judge's bar.",
+      "practice": {
+        "champion_mae": 3.036,
+        "model_mae": 2.995,
+        "wins_pct": 93.76
+      },
+      "submit": true
+    },
+    "ttft_ms": 2805,
+    "type": "result",
+    "duration_ms": 14008,
+    "uuid": "a93b1be7-06cf-474e-8d7b-566c89f8801b",
+    "ttft_stream_ms": 2466,
+    "time_to_request_ms": 63,
+    "first_content_frame_ms": 2467,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}

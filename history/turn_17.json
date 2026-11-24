@@ -1,0 +1,110 @@
+{
+  "seconds": 31,
+  "response": {
+    "duration_api_ms": 28302,
+    "stop_reason": "tool_use",
+    "session_id": "505f8e4d-aae8-472c-a8ae-4138f548f72b",
+    "total_cost_usd": 0.0720074,
+    "usage": {
+      "input_tokens": 16,
+      "cache_creation_input_tokens": 6011,
+      "cache_read_input_tokens": 167414,
+      "output_tokens": 3119,
+      "output_tokens_details": {
+        "thinking_tokens": 672
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 6011,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 16,
+        "outputTokens": 3119,
+        "cacheReadInputTokens": 167414,
+        "cacheCreationInputTokens": 6011,
+        "webSearchRequests": 0,
+        "costUSD": 0.0720074,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 672,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 6011,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [
+      {
+        "tool_name": "Bash",
+        "tool_use_id": "toolu_01LaJSdsRhiTq5V6uZXToUft",
+        "tool_input": {
+          "command": "cd /work; cat > /tmp/t.py <<'E'\nimport pandas as pd,numpy as np,model\nd=pd.read_parquet('/data');d['date']=pd.to_datetime(d['date']);d=d.sort_values('date').reset_index(drop=True)\ny=d.load.values;B=model._features(d.date,d.temp_forecast)\nfor w in [3,5,7,10,14,21]:\n    m=d.temp_forecast.shift(1).rolling(w,min_periods=1).mean().values\n    for c in [19]:\n      for nm,f in [('abs',np.abs(m-c)),('h+c',None)]:\n        if f is None: X=np.column_stack([B,np.maximum(17-m,0),np.maximum(m-21,0)])\n        else: X=np.column_stack([B,f])\n        n=len(y)//2\n        # train first half test second\n        b=np.linalg.lstsq(X[w:n],y[w:n],rcond=None)[0]\n        print(w,nm,np.abs(y[n:]-X[n:]@b).mean())\nb=np.linalg.lstsq(B[:300],y[:300],rcond=None)[0];print('base',np.abs(y[300:]-B[300:]@b).mean())\nE\npython /tmp/t.py"
+        }
+      }
+    ],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 9,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"idea\":\"Add |prior 7-day mean temp \u2212 19C| feature to regression\",\"lesson\":\"Residuals show no weekday, holiday or autocorrelation signal, and the only gain is lagged temperature, a near-copy of ideas the judge already threw away.\",\"practice\":{\"champion_mae\":3.036,\"model_mae\":2.869,\"wins_pct\":99.87},\"submit\":false}",
+    "structured_output": {
+      "idea": "Add |prior 7-day mean temp \u2212 19C| feature to regression",
+      "lesson": "Residuals show no weekday, holiday or autocorrelation signal, and the only gain is lagged temperature, a near-copy of ideas the judge already threw away.",
+      "practice": {
+        "champion_mae": 3.036,
+        "model_mae": 2.869,
+        "wins_pct": 99.87
+      },
+      "submit": false
+    },
+    "ttft_ms": 1933,
+    "type": "result",
+    "duration_ms": 30004,
+    "uuid": "c3f36818-85a9-4cec-aef2-e898268af265",
+    "ttft_stream_ms": 1650,
+    "time_to_request_ms": 52,
+    "first_content_frame_ms": 1651,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}
