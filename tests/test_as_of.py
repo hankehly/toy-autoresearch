@@ -773,12 +773,14 @@ def test_advance_the_champions_model_is_unchanged(advanced_to_2026_06):
     assert advanced_to_2026_06["champion"] == REGRESSION
 
 
-def test_agents_copy_the_top_line_gives_the_champions_new_practice_score_and_an_advance_is_not_a_try(
+def test_agents_copy_the_top_lines_give_the_champions_new_practice_score_and_a_try_count_of_one_half(
     advanced_to_2026_06,
 ):
+    # turn 1's try was judged on 2024-07 to 2025-06. Six of those twelve months are still in the
+    # validation period, so it counts 6/12. The advance itself is not a try
     assert advanced_to_2026_06["agent_ledger"][:2] == [
         "# Champion: turn 1, practice 2.97 MWh",
-        "# Ideas judged: 1. The next must win 97.5% of the judge's reshuffles.",
+        "# Try count: 0.50. The next idea must win 96.67% of the judge's reshuffles.",
     ]
 
 
@@ -1009,9 +1011,10 @@ def test_a_turn_under_2026_07_the_same_idea_now_wins_95_17_pct_on_practice_so_it
     ]
 
 
-def test_it_is_the_2nd_try_so_the_bar_is_97_5_pct(advanced_to_2026_07):
-    # the try count is still the plain count of judged ideas
-    assert cells(advanced_to_2026_07["row"], *VALIDATION) == ["2.812", "44.65", "97.5"]
+def test_turn_1s_try_counts_5_12_by_then_so_the_bar_is_96_47_pct(advanced_to_2026_07):
+    # seven of its twelve validation months have left, so the idea is judged as number 1 + 5/12
+    # and must win 1 - 5% / 1.4167 = 96.47% of the reshuffles
+    assert cells(advanced_to_2026_07["row"], *VALIDATION) == ["2.812", "44.65", "96.47"]
 
 
 # --- loop.holdout(): the holdout period of the as-of date, with validation measured now ------

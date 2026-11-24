@@ -1,5 +1,5 @@
 # Champion: turn 1, practice 3.036 MWh
-# Ideas judged: 6. The next must win 99.29% of the judge's reshuffles.
+# Try count: 6.00. The next idea must win 99.29% of the judge's reshuffles.
 # To be judged, an idea must win at least 90% of the practice reshuffles.
 turn	as_of	idea	practice_champion	practice	practice_wins	verdict	lesson
 0	2025-12	baseline: average of the last 7 days	-	5.656	-	start	-

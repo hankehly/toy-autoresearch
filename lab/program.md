@@ -42,9 +42,9 @@ adds a `month` column taken from the folder names.
   row's were measured on different months: don't compare them with what `practice.py`
   prints today.
 
-  The three lines on top name the champion with its practice score on today's practice
-  period, the bar the next idea must clear at the judge, and the share of practice
-  reshuffles an idea must win to be judged.
+  The three lines on top give the champion with its practice score on today's practice
+  period, the try count with the bar the next idea must clear at the judge, and the share
+  of practice reshuffles an idea must win to be judged.
 
 ## How you're judged
 A judge you can't see runs model.py one month at a time over the {validation_months} months
@@ -55,6 +55,12 @@ Your change is kept only if it beats the current model in nearly all of 10,000
 reshuffles of the judge's 52 weeks. The bar rises with every idea the judge tests: the
 1st must win 95% of reshuffles, the 10th 99.5%, the 100th 99.95%. Small tweaks rarely
 clear it, so aim for clear gains.
+
+The bar also eases a little after each `advanced` row. By then the judge's period has
+moved on, so an idea judged before the row counts 1/{validation_months} less for each
+month it moved, and nothing once all {validation_months} months are new. The second line
+of `ledger.tsv` shows the result: the try count, which is how much the judged ideas count
+now, and the bar the next idea must clear.
 
 ## Each turn, step by step
 Your shell runs Python only: `python script.py` or `python -c "..."`.
@@ -77,10 +83,13 @@ Your shell runs Python only: `python script.py` or `python -c "..."`.
 
 ## Rules
 1. One idea per turn, so we learn what helped.
-2. Don't retry an idea the ledger shows was thrown away unless you change it meaningfully.
+2. Don't retry an idea that was thrown away under the newest `as_of` in the ledger unless
+   you change it meaningfully. An idea thrown away under an older `as_of` may be tried
+   again as it was: the judge's months have changed since. It counts as a try like any other.
 3. If an idea won on practice but the judge threw it away, its gain is either real but too
    small to prove on the judge's period, or luck on the practice period. A near-copy is
-   scored on the same months, so it will most likely be thrown away too. Try a different idea.
+   scored on the same months until the next `advanced` row, so it will most likely be
+   thrown away too. Try a different idea.
 4. Keep `fit()` and `predict()` working the same way. numpy and pandas only.
    Don't read files inside model.py, `/data` included: `fit()` and `predict()` are handed
    the history, and that is all the data a model gets. The judge runs model.py in a locked

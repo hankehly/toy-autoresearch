@@ -25,7 +25,8 @@ The lessons are meant to carry over to real problems like these.
   the result into the workspace. It uses Python's `str.format`, so a brace meant to reach
   the agent as text must be doubled (`{{`), and a misspelt name stops the turn.
 - Two ledgers. `ledger.tsv` at the repo root is the full record, validation scores
-  included, and the try count behind the bar comes from it. `lab/ledger.tsv` is the agent's
+  included, and the try count behind the bar comes from its verdicts and its `as_of`
+  column. `lab/ledger.tsv` is the agent's
   copy, rewritten from it after every turn: practice numbers, verdict and lesson, and no
   number from the validation period. Verdicts: `KEPT` and `thrown away` were judged and count
   as tries; `dropped on practice` (changed, but not submitted or under `SUBMIT_PCT`),
@@ -34,7 +35,8 @@ The lessons are meant to carry over to real problems like these.
   measured under (`as_of`); old rows are never measured again. An `advanced` row is added by
   `loop.py advance`: it has no turn number, is not a try, and holds the champion's practice
   and validation scores under the new as-of date. The top line of the agent's copy uses the
-  champion's newest practice score.
+  champion's newest practice score, and the second gives the try count (to two decimals)
+  with the bar the next idea must clear.
 - Data store (`store.py`; `data/`, not in git). One folder per month in the layout Spark
   writes: `data/store/month=2023-01/part.parquet`, columns `date`, `temp_forecast`, `load`.
   The loop, the judge and the scripts reach the data only through `store.py`'s functions
@@ -72,23 +74,45 @@ The lessons are meant to carry over to real problems like these.
 - `loop.py advance`, by hand, between nights: moves the as-of date to the store's newest
   month (one month or many), measures the champion on the new practice and validation
   periods, and adds the `advanced` row. It changes no model and scores nothing on the
-  holdout period. An advance happens whole or not at all: if it is cut short (the champion
-  can't be measured, a timeout, Ctrl-C), the as-of date and both ledgers are put back. With
+  holdout period. The tries from before it then count for less (the try count, below), so
+  the bar eases a little. An advance happens whole or not at all: if it is cut short (the
+  champion can't be measured, a timeout, Ctrl-C), the as-of date and both ledgers are put back. With
   nothing newer in the store it stops. `loop.py reset` puts the as-of date back to the one
   in the ledger's `start` row and leaves the store alone. `loop.py holdout` prints each
   model's validation score measured now, beside its holdout score.
-- Keep rule: reshuffle the 52 scored weeks 10,000 times. The k-th idea tested must win at
-  least 1 - 5%/k of reshuffles (95% for the 1st, 99.5% for the 10th, 99.95% for the 100th),
-  which keeps the expected number of lucky keeps under one for a 300-idea night.
+- Keep rule: reshuffle the 52 scored weeks 10,000 times. An idea must win at least
+  1 - 5% / (try count + 1) of reshuffles (95% for the 1st idea, 99.5% for the 10th, 99.95%
+  for the 100th), which keeps the expected number of lucky keeps under one for a 300-idea
+  night.
+- Try count (issue #5; `try_count()` in `loop.py`; reasons in `docs/adr/0002`). A try counts
+  in proportion to how many of the months it was judged on are still in the validation
+  period: for each judged row, `(12 - months between its as-of date and the current one) / 12`,
+  never below zero, with the judge's validation length for the 12. In plain words: an old try is
+  worth less the more the validation period has moved on since. It is a whole number until
+  an advance follows a try, so without an advance every bar is what it was before this rule.
+
+  | Months advanced since 8 tries | Each try counts | Try count | Bar for the next idea |
+  |---|---|---|---|
+  | 0 | 12/12 | 8.00 | 99.44% |
+  | 1 | 11/12 | 7.33 | 99.40% |
+  | 6 | 6/12 | 4.00 | 99.00% |
+  | 12 or more | 0 | 0.00 | 95.00% |
+
+  The judge's `bar` and `compare` commands take the idea's number (try count plus one),
+  which need not be whole.
 - `scripts/answer_key.py` is the recipe that made the data (validation 2.83, holdout 2.77 MWh). It is
   close to the best possible but not a hard floor: adding yesterday's temperatures beats it
   slightly, because that sharpens the estimate of today's actual temperature. A real project
   has no answer key, so the loop never runs it; score it with
   `uv run judge/judge.py score val scripts/answer_key.py`.
-- `scripts/night_sim.py` re-implements the judge for speed (it reproduces the judge's scores exactly)
-  and simulates whole nights with a random-tweak robot. True error is measured on 100
-  parallel towns: the same recipe with fresh weather and noise. If you change the judge's
-  rules, change `scripts/night_sim.py` to match.
+- `scripts/night_sim.py` re-implements the judge for speed (it reproduces the judge's scores
+  exactly, under every as-of date from 2025-12 to 2026-12) and simulates whole nights with a
+  random-tweak robot. Its towns are made by `make_data.py`'s own `town()`: generators 7 and
+  8 give the real town, pretend future included. True error is measured on 100 parallel
+  towns: the same recipe with fresh weather and noise. `uv run scripts/night_sim.py advance`
+  spends the 300 ideas over 12 nights with a one-month advance between them, under three
+  rules for the try count (finding 8). If you change the judge's rules or the loop's
+  `try_count()`, change `scripts/night_sim.py` to match.
 - `scripts/bundle_sim.py` tests whether small changes add up (finding 6).
 
 ## What we learned (MWh per day; "luck" = one standard deviation of a measured gain)
@@ -123,6 +147,57 @@ The lessons are meant to carry over to real problems like these.
    idea (won 100%; validation 2.14 and holdout 2.06 with noise added, 0.00 without), and it passed
    `check.py`. The holdout agreed, so every statistical guard failed at once. Isolation, not
    statistics, stops this; the model sandbox now makes it crash (`tests/test_sandboxes.py`).
+8. What a try counts after an advance (`scripts/night_sim.py advance`: the same 300 ideas in
+   one night, and in 12 nights of 25 with a one-month advance between them; 30 runs, each
+   judged on a town of its own). Each cell: from turn 2's model / from an already-optimal
+   one. From turn 2's model a lucky keep is a kept change that did not make the true error
+   smaller. From the already-optimal model every kept change counts as one.
+
+   | 300 ideas | Lucky keeps per run | The same with retries | Ledger gain | True gain | Bar after the 300 ideas |
+   |---|---|---|---|---|---|
+   | One night, no advance | 0.07 / 0.10 | | +0.15 / 0 | +0.13 / 0 | 99.97% |
+   | 12 nights, keep the count | 0.10 / 0.03 | 0.07 / 0.07 | +0.22 / 0 | +0.18 / 0 | 99.98% |
+   | 12 nights, reset the count | 0.60 / 0.60 | 0.43 / 0.53 | +0.25 / +0.01 | +0.21 / 0 | 99.70% |
+   | 12 nights, tries fade (the loop's rule) | 0.10 / 0.03 | 0.10 / 0.07 | +0.22 / 0 | +0.18 / 0 | 99.95% |
+
+   Gains and bars are without retries. A retry tries again, as it was, an idea thrown away
+   under an older as-of date: 3 turns in 10 after each advance, the idea picked at random.
+   - Fading kept about one lucky idea in ten runs: far under one per 300 ideas, and about as
+     many as never forgetting a try. It kept one more in the 120 runs of each: an idea that
+     won 99.94% of reshuffles, enough as number 74 (bar 99.93%) and not as number 103 (99.95%).
+   - Resetting kept one lucky idea in about every two runs, several times as many, for a
+     little more real gain (+0.03; the gap's luck is 0.014).
+   - A retry can be a lucky keep like any other try, and is about as likely to be one as a
+     new idea. Over 200 runs of the two fading rows (`SEEDS = 200`): 14 lucky keeps with
+     retries and 15 without from turn 2's model, 27 and 21 from the already-optimal one
+     (0.03 more per run, a gap whose luck is 0.02). Retries were 27% of the turns and 10 of
+     the 41 lucky keeps. One of the 10 was judged three times: it won 80%, then 99.44%, then
+     99.92% against a bar of 99.89%, as the validation period moved on a month each time.
+     For that idea, a retry after a one-month advance was far from the same test again.
+   - Why: each judged idea may be a lucky keep with a chance of at most 5% / (try count + 1).
+     With about 17 ideas judged a night, those chances add up over the 12 nights to 0.30
+     with a kept count, 0.33 with fading and 2.1 with a reset. The measured counts are a
+     third of that or less, in the same order, as expected when a made-up input truly hurts
+     a little.
+   - In the first year fading and keeping the count are nearly the same rule, because new
+     tries arrive faster than old ones fade. They part later: at this pace the fading count
+     levels off near 100 (a bar of 99.95%, and by the same sum at most 0.1 lucky keeps a
+     year), a kept count grows for good, and when the research pauses the fading bar comes
+     back down. The gap is wider at a slower pace: with 3 ideas judged a night, the fading
+     count levels off at 20 (99.76%), where a kept count reaches 108 in three years (99.95%).
+   - The same 300 ideas found more real gain over 12 nights than in one (+0.18 against
+     +0.13; the gap's luck is 0.017). In one night every idea meets the same validation
+     months: in 9 of the 30 single nights nothing was kept, against 1 with advances. (Truth
+     is measured on the months of each run's last as-of date, so on later months for the 12
+     nights. That moves it little: the ideas kept on the first night, the same in both,
+     measure +0.087 on the earlier months and +0.089 on the later ones.)
+   - Two checks were made once, with throwaway scripts that are not in this repo (the pull
+     request for issue #5 has the numbers). Judged on the real town alone, the lucky keeps
+     were alike (fading 0 to 0.07, keeping 0 to 0.07, resetting 0.27 to 0.70), but the single
+     night gained more than the 12 nights (+0.19 against +0.14): one town's validation
+     months are one draw of luck, which is why each run now gets its own town. And when the
+     robot retried the same few ideas after every advance, up to 12 times in the year,
+     fading kept 0.07 / 0.10 lucky ideas per run.
 
 ## Open threads
 - Allow practice-year bundles: let the agent submit several ideas that each helped on its
@@ -135,14 +210,18 @@ The lessons are meant to carry over to real problems like these.
   program.md points. 90% means a gain of about 1.3 times its own luck, in any units. It is
   a starting point (in run 2 only turn 3 would have cleared it). Revisit it once the full
   ledger has a few dozen judged ideas.
-- Set near-misses aside and re-test them on new months; never bundle them and re-test on the
-  same scored year.
+- Near-misses: the brief (rule 2) now lets the agent try again, as it was, an idea thrown
+  away under an older as-of date, and the retry counts as a try. In simulation a retry was
+  about as likely to be a lucky keep as a new idea (finding 8). Unproven with a real agent:
+  whether it picks turn 3's idea up again after an advance (under 2026-07 it wins 95.17% of
+  practice reshuffles). Never bundle near-misses and re-test them on the same validation
+  months.
 - Port the judge to the real load-forecasting data. For racing, score by log loss against the
   market's odds rather than by ROI.
-- After an advance the try count is still the plain count of judged ideas. Part 3 of the
-  as-of work makes old tries fade (`docs/adr/0002`), and `scripts/night_sim.py` keeps its
-  fixed dates until then. Nothing stops an advance during a night; add a guard only if it
-  goes wrong.
+- Nothing stops an advance during a night; add a guard only if it goes wrong.
+- `scripts/night_sim.py`'s robot submits every idea that looks better on its practice period:
+  it has no `SUBMIT_PCT`. So about 200 of its 300 ideas are judged, far more than the real
+  loop would judge, and its try counts run higher than a real ledger's will.
 
 ## Practical notes
 - uv manages Python 3.12 and the packages (`pyproject.toml`, `uv.lock`). Run everything with
@@ -158,7 +237,7 @@ The lessons are meant to carry over to real problems like these.
   depend on what `as_of.txt` says.
 - `scripts/` holds helpers outside the main loop (`make_data.py`, `ingest.py`, `answer_key.py`, the simulations). Run them from the repo root.
 - `tests/` holds the tests, which run with pytest. One command from the repo root runs them all:
-  `uv run pytest` (about 3 minutes; Docker running, no token, no `make_data.py` first). One file:
+  `uv run pytest` (about 3.5 minutes; Docker running, no token, no `make_data.py` first). One file:
   `uv run pytest tests/test_store.py`. Tests by name: `uv run pytest -k proxy`. `tests/conftest.py`
   holds what the test files share.
 - GitHub runs the tests and the code checks on every pull request and every push to `main`
@@ -196,8 +275,9 @@ The lessons are meant to carry over to real problems like these.
   under, and clears the ledger and history.
 - If you change a sandbox or the messages, run `tests/test_sandboxes.py`. Docker is a
   strong fence for an over-eager agent, not a guarantee against hostile code.
-- If you change `turn()`, the ledgers or the reply schema, run `tests/test_loop.py` (about
-  1 minute; real judge and model sandbox, a stand-in agent, no token needed).
+- If you change `turn()`, the ledgers, the try count or the reply schema, run
+  `tests/test_loop.py` (about 1.5 minutes; real judge and model sandbox, a stand-in agent, no
+  token needed). Its last section is the try count's table: 8 tries, then four real advances.
 - `lab/practice.py` carries its own copy of the judge's walk and reshuffle, because the
   agent's workspace has no `judge/`. Its practice period is the newest 12 months mounted at
   `/data` (`PRACTICE_MONTHS`, the same setting as the judge's). Change them together;

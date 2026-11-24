@@ -10,7 +10,7 @@ Each turn:
      period itself (the judge does the measuring, in the model sandbox)
   4. if the agent submitted it and it won enough of the practice reshuffles (SUBMIT_PCT),
      the judge compares it with the champion on the validation period, with a bar that
-     rises with every idea tested (see judge.py)
+     rises with the try count (see try_count() below, and judge.py)
   5. keep it (new champion) or throw it away, and write the verdict into both ledgers
 
     uv run loop.py run 5     # five more turns (continues from the ledger)
@@ -394,9 +394,54 @@ def read_ledger() -> list[dict[str, str]]:
     return [dict(zip(COLUMNS, r.split("\t"), strict=False)) for r in rows]
 
 
-def ideas_judged() -> int:
-    """How many ideas the judge has tested so far. The next one is tested against a higher bar."""
-    return sum(r["verdict"] in TRIED for r in read_ledger())
+def months_between(earlier, later) -> int:
+    """Count the months from one month to a later one.
+
+    Parameters
+    ----------
+    earlier : str
+        A month, written as year-month.
+    later : str
+        Another month, written the same way.
+
+    Returns
+    -------
+    int
+        How many months `later` comes after `earlier`: 0 for the same month, 12 for the
+        same month a year on.
+    """
+    year, month = map(int, earlier.split("-"))
+    later_year, later_month = map(int, later.split("-"))
+    return 12 * (later_year - year) + (later_month - month)
+
+
+def try_count() -> float:
+    """Count the tries that still weigh on the validation period. The bar rises with this number.
+
+    A try was judged on the validation period of the as-of date in its row. For every month
+    the as-of date has advanced since, one of those months has left the validation period,
+    and the try counts for that much less (docs/adr/0002).
+
+    Example, with a 12-month validation period: 8 tries count 8.00 until the next advance.
+    One month on, 11 of their 12 months are still in the period, so they count
+    8 x 11/12 = 7.33. Six months on they count 4.00, and 12 or more months on, nothing.
+
+    Returns
+    -------
+    float
+        The sum, over the ledger's tries (the rows whose verdict is in TRIED), of the share
+        of the try's validation months that are still in the validation period. It is a
+        whole number as long as no advance has followed a try.
+    """
+    found = periods()
+    length = len(found["val"])  # the validation period's length, in months
+    # for each try, how many of the months it was judged on are still in the validation period
+    months_left = [
+        max(0, length - months_between(row["as_of"], found["as_of"]))
+        for row in read_ledger()
+        if row["verdict"] in TRIED
+    ]
+    return sum(months_left) / length
 
 
 def last_turn() -> int:
@@ -441,10 +486,11 @@ def write_agent_ledger() -> None:
     champion = [r for r in rows if r["verdict"] in CHAMPIONS][-1]
     # the champion's newest practice score: after an advance, the one in the advance's row
     measured = [r for r in rows if r["verdict"] in (*CHAMPIONS, ADVANCED)][-1]
-    bar_pct = judge("bar", ideas_judged() + 1)["bar_pct"]
+    count = try_count()
+    bar_pct = judge("bar", count + 1)["bar_pct"]  # the next idea is judged as number try count + 1
     lines = [
         f"# Champion: turn {champion['turn']}, practice {measured['practice']} MWh",
-        f"# Ideas judged: {ideas_judged()}. The next must win {bar_pct}% of the judge's reshuffles.",
+        f"# Try count: {count:.2f}. The next idea must win {bar_pct}% of the judge's reshuffles.",
         f"# To be judged, an idea must win at least {SUBMIT_PCT}% of the practice reshuffles.",
         "\t".join(AGENT_COLUMNS),
     ]
@@ -551,9 +597,9 @@ def turn(t) -> None:
         log(t, idea, "dropped on practice", **row)
         return
 
-    # 4. the judge compares it with the champion on the validation period; the bar rises with k
-    k = 1 + ideas_judged()  # this is the k-th idea tested
-    judged = judge("compare", champion, candidate, k)
+    # 4. the judge compares it with the champion on the validation period; the bar rises with the try count
+    # the idea is judged as number try count + 1
+    judged = judge("compare", champion, candidate, try_count() + 1)
 
     # 5. keep it (new champion) or throw it away, and write the verdict into both ledgers
     if "error" in judged:
@@ -582,7 +628,8 @@ def advance() -> None:
     how long it has been since the last advance. The champion is then measured on the new
     practice and validation periods, and one `advanced` row in the ledgers records the two
     scores. That row is not a try. No model changes, no old row is measured again, and
-    nothing is scored on the holdout period.
+    nothing is scored on the holdout period. The tries from before the advance now count
+    for less (try_count()), so the bar on top of the agent's ledger eases a little.
 
     Raises
     ------

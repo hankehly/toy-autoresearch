@@ -8,10 +8,15 @@ model has sent back its guess for that day.
 
     uv run judge/judge.py score val     lab/model.py           # the validation period: what the agent is graded on
     uv run judge/judge.py score holdout lab/model.py           # the holdout period: scored once, at the end
-    uv run judge/judge.py compare champion.py candidate.py 12  # keep or throw away the 12th idea tested (validation only)
+    uv run judge/judge.py compare champion.py candidate.py 12  # keep or throw away the idea judged as number 12 (validation only)
     uv run judge/judge.py practice champion.py candidate.py    # the same comparison on the practice period, with no bar
-    uv run judge/judge.py bar 12                               # the share of reshuffles the 12th idea tested must win
+    uv run judge/judge.py bar 12                               # the share of reshuffles the idea judged as number 12 must win
     uv run judge/judge.py periods                              # the as-of date and the months of each period
+
+An idea's number is the try count plus one. The loop works out the try count (try_count() in
+loop.py), and a try counts for less as the months it was judged on leave the validation
+period. So the number need not be whole: `bar 8.33` is the bar after 8 tries and a
+one-month advance.
 
 No period is written down as dates. as_of.txt, in the repo root, holds one month: the as-of
 date, the last month the research may use. periods() counts the holdout, validation and
@@ -52,7 +57,7 @@ WEEKS = 52
 RESHUFFLES = 10_000  # how many times we re-deal the weeks
 
 # TODO: Where does this threshold come from? Was it used by a related project?
-FLUKE_BUDGET = 0.05  # the k-th idea tested must win at least 1 - 5%/k of the re-deals
+FLUKE_BUDGET = 0.05  # an idea must win at least 1 - 5% / (try count + 1) of the re-deals
 
 
 CRASHED = "model.py crashed or ran out of time (its error, if any, is printed above)"
@@ -195,20 +200,48 @@ def win_share(old, new) -> float:
     return float((gaps[picks].sum(axis=1) / days[picks].sum(axis=1) < 0).mean())
 
 
-def bar(k) -> float:
-    """The share of re-deals the k-th idea tested must win: 1 - 5%/k.
+def bar(number) -> float:
+    """Work out the share of re-deals an idea must win to be kept: 1 - 5% / number.
 
-    That is 95% for the 1st, 99.5% for the 10th, 99.95% for the 100th.
-    Over a whole night, that keeps the expected number of lucky keeps under one.
+    That is 95% for the 1st idea judged, 99.5% for the 10th and 99.95% for the 100th. Over
+    a whole night, it keeps the expected number of lucky keeps under one.
+
+    Parameters
+    ----------
+    number : float
+        The number the idea is judged as: the try count plus one. It is not a whole number
+        once an advance has made old tries count for less: 8.33 after 8 tries and a
+        one-month advance.
+
+    Returns
+    -------
+    float
+        The share, from 0.95 up to almost 1. For the number 8.33 it is 0.994.
     """
-    return 1 - FLUKE_BUDGET / k
+    return 1 - FLUKE_BUDGET / number
 
 
-def compare(champion_path, candidate_path, k) -> dict:
-    """The verdict on the validation period.
+def compare(champion_path, candidate_path, number) -> dict:
+    """Give the verdict on the validation period.
 
-    The k-th idea tested is kept only if its average miss is lower in at least bar(k) of the
+    An idea is kept only if its average miss is the lower one in at least bar(number) of the
     re-deals.
+
+    Parameters
+    ----------
+    champion_path : str or Path
+        The champion's model.py.
+    candidate_path : str or Path
+        The idea's model.py.
+    number : float
+        The number the idea is judged as: the try count plus one (see bar()).
+
+    Returns
+    -------
+    dict
+        "champion_mae" and "candidate_mae", the two average misses in MWh. "win_pct", the
+        share of re-deals the idea won, and "bar_pct", the share it needed, both in %.
+        "keep", the verdict.
     """
     old = daily_misses(champion_path, "val")
     new = daily_misses(candidate_path, "val")
@@ -217,8 +250,8 @@ def compare(champion_path, candidate_path, k) -> dict:
         "champion_mae": round(float(old.mean()), 3),
         "candidate_mae": round(float(new.mean()), 3),
         "win_pct": round(100 * share, 2),
-        "bar_pct": round(100 * bar(k), 2),
-        "keep": share >= bar(k),
+        "bar_pct": round(100 * bar(number), 2),
+        "keep": share >= bar(number),
     }
 
 
@@ -246,10 +279,10 @@ if __name__ == "__main__":
             )
         )
     elif sys.argv[1] == "compare":
-        print(json.dumps(compare(sys.argv[2], sys.argv[3], int(sys.argv[4]))))
+        print(json.dumps(compare(sys.argv[2], sys.argv[3], float(sys.argv[4]))))
     elif sys.argv[1] == "practice":
         print(json.dumps(practice(sys.argv[2], sys.argv[3])))
     elif sys.argv[1] == "bar":
-        print(json.dumps({"bar_pct": round(100 * bar(int(sys.argv[2])), 2)}))
+        print(json.dumps({"bar_pct": round(100 * bar(float(sys.argv[2])), 2)}))
     elif sys.argv[1] == "periods":
         print(json.dumps({"as_of": AS_OF.read_text().strip(), **periods()}))
