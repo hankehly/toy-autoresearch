@@ -15,6 +15,17 @@ _Avoid_: starting model, turn 0
 The best model so far: the last idea the judge kept, or the baseline if none has been kept.
 _Avoid_: current model, best model
 
+### The loop
+
+**Turn**:
+One agent's work on one idea, from reading the brief to the verdict on what it changed.
+_Avoid_: run, iteration, round, experiment
+
+**Batch**:
+The turns run one after another with no person stepping in between them. No rule depends
+on where a batch ends: what a try counts depends on the as-of date alone.
+_Avoid_: night, session, run, bundle
+
 ### Scoring
 
 **Try**:
@@ -25,6 +36,10 @@ _Avoid_: attempt, submission, test
 How many tries count against the current validation period. A try counts for less as the
 months it was judged on leave that period.
 _Avoid_: k, number of ideas
+
+**Bundle**:
+Several ideas submitted together as one try.
+_Avoid_: batch, stack, combination
 
 **Holdout score**:
 A model's average miss on the holdout period.

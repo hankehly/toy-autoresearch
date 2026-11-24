@@ -1,11 +1,11 @@
-"""A simulated night: 300 research turns, with a random-tweak robot standing in for the agent.
+"""A simulated batch: 300 research turns, with a random-tweak robot standing in for the agent.
 
 The town is made up, so we can measure each model's TRUE error: re-live the same years in
 100 parallel towns (same recipe, fresh weather and noise) and average the misses.
 That lets us check every "kept" decision against the truth.
 
-    uv run scripts/night_sim.py            # about 5 minutes; prints the summary, writes night_sim.csv
-    uv run scripts/night_sim.py advance    # about 16 minutes; prints the summary, writes night_sim_advance.csv
+    uv run scripts/loop_sim.py            # about 5 minutes; prints the summary, writes loop_sim.csv
+    uv run scripts/loop_sim.py advance    # about 16 minutes; prints the summary, writes loop_sim_advance.csv
 
 The robot is dumber than Claude, but the trap is statistical, so it catches any researcher.
 Each turn it has one idea and tries 7 versions of it privately, then submits the best
@@ -13,12 +13,12 @@ Each turn it has one idea and tries 7 versions of it privately, then submits the
 tweak a setting; half add a new input that sounds useful but is pure noise in this town:
 a made-up events calendar or a humidity-like series.
 
-With no argument, every night is judged on the real toy town under one as-of date, and four
+With no argument, every batch is judged on the real toy town under one as-of date, and four
 systems are compared: the old toy, each of its two fixes alone, and both together.
 
 `advance` asks what a try should still count once the as-of date has advanced
-(docs/adr/0002). It spends the same 300 ideas in two ways: in one night, and in 12 nights
-of 25 with a one-month advance between them. The 12 nights are run under three rules for
+(docs/adr/0002). It spends the same 300 ideas in two ways: in one batch, and in 12 batches
+of 25 with a one-month advance between them. The 12 batches are run under three rules for
 the try count: keep it, reset it, or let old tries fade, which is the loop's rule. They are
 then run again with retries: some turns try again an idea that was thrown away under an
 older as-of date, which the brief allows. Every seed is judged on a town of its own, so
@@ -39,7 +39,7 @@ HOLDOUT_MONTHS, VALIDATION_MONTHS, PRACTICE_MONTHS = 6, 12, 12
 START_AS_OF = pd.Period("2025-12", "M")  # the as-of date every run starts under: a fresh checkout's
 
 # The three years the toy began with, and one year of its pretend future: enough months
-# for 12 nights with a one-month advance between them.
+# for 12 batches with a one-month advance between them.
 DAYS = pd.date_range("2023-01-01", "2026-12-31", freq="D")
 N = len(DAYS)
 DOW = DAYS.dayofweek.to_numpy()
@@ -542,12 +542,12 @@ class Lab:
         seed,
         new_input_share=0.5,
         turns=300,
-        nights=1,
+        batches=1,
         count_rule="tries fade",
         retry_share=0.0,
         first_id=0,
     ) -> pd.DataFrame:
-        """Simulate a run of ideas: one night, or several nights with a one-month advance between them.
+        """Simulate a run of ideas: one batch, or several batches with a one-month advance between them.
 
         Parameters
         ----------
@@ -563,12 +563,12 @@ class Lab:
             The share of new ideas that add a made-up input. The rest tweak a setting.
         turns : int
             How many ideas the run has.
-        nights : int
-            The turns are split evenly over this many nights. The as-of date advances one
-            month between two nights, so every period moves on a month.
+        batches : int
+            The turns are split evenly over this many batches. The as-of date advances one
+            month between two batches, so every period moves on a month.
         count_rule : str
-            What a try from an earlier night still counts: one of COUNT_RULES. With one
-            night the three rules agree.
+            What a try from an earlier batch still counts: one of COUNT_RULES. With one
+            batch the three rules agree.
         retry_share : float
             After an advance, the share of turns that are retries: they try again, as it
             was, an idea thrown away under an older as-of date. Such an idea is tried once
@@ -592,11 +592,11 @@ class Lab:
         }
         rng = np.random.default_rng(seed)
         fresh_ids = itertools.count(first_id)
-        last = START_AS_OF + nights - 1  # the as-of date of the last night
+        last = START_AS_OF + batches - 1  # the as-of date of the last batch
         champ, judged, thrown, rows = start, [], [], []
         for turn in range(1, turns + 1):
             # how many months the as-of date has advanced so far
-            advanced = (turn - 1) // (turns // nights)
+            advanced = (turn - 1) // (turns // batches)
             as_of = START_AS_OF + advanced
 
             # the turn's idea: a retry of a thrown-away idea, or a new idea in up to 7 versions
@@ -679,36 +679,38 @@ SCENARIOS = {
 }
 
 SEEDS = 30  # in `advance`, each kind of run is simulated this many times, each time on a town of its own
-NIGHTS = 12  # there, the 300 ideas are spread over this many nights, a one-month advance apart
+BATCHES = 12  # there, the 300 ideas are spread over this many batches, a one-month advance apart
 RETRY_SHARE = (
     0.3  # in the runs with retries: after an advance, 3 turns in 10 try a thrown-away idea again
 )
 # The runs `advance` compares, each of 300 ideas, and the settings Lab.run() gets for them.
-RUNS = {"one night of 300, no advance": dict()}
-RUNS |= {f"12 nights of 25, {rule}": dict(nights=NIGHTS, count_rule=rule) for rule in COUNT_RULES}
+RUNS = {"one batch of 300, no advance": dict()}
 RUNS |= {
-    f"with retries, {rule}": dict(nights=NIGHTS, count_rule=rule, retry_share=RETRY_SHARE)
+    f"12 batches of 25, {rule}": dict(batches=BATCHES, count_rule=rule) for rule in COUNT_RULES
+}
+RUNS |= {
+    f"with retries, {rule}": dict(batches=BATCHES, count_rule=rule, retry_share=RETRY_SHARE)
     for rule in COUNT_RULES
 }
 
 
 def compare_systems(lab) -> None:
-    """Simulate every night on the real toy town, under one as-of date, and print what was kept.
+    """Simulate every batch on the real toy town, under one as-of date, and print what was kept.
 
-    The nights are run for the old toy, each of its two fixes alone, and both together.
-    Every turn is saved in night_sim.csv.
+    The batches are run for the old toy, each of its two fixes alone, and both together.
+    Every turn is saved in loop_sim.csv.
 
     Parameters
     ----------
     lab : Lab
-        The lab the nights are simulated in.
+        The lab the batches are simulated in.
     """
     key_truth = float(np.mean([answer_key_errors(t, VAL + HOLDOUT).mean() for t in lab.multiverse]))
     print(
         f"answer key: validation {answer_key_errors(lab.town, VAL).mean():.3f}  "
         f"holdout {answer_key_errors(lab.town, HOLDOUT).mean():.3f}  truth {key_truth:.3f}"
     )
-    nights = []
+    batches = []
     for scenario, start in SCENARIOS.items():
         start_val, start_truth = lab.score(start, "val").mean(), lab.truth(start)
         print(
@@ -721,8 +723,8 @@ def compare_systems(lab) -> None:
                 df["scenario"], df["system"], df["seed"] = scenario, name, seed
                 df["ledger_gain"] = start_val - df.val
                 df["true_gain"] = start_truth - df.truth
-                nights.append(df)
-        part = pd.concat([n for n in nights if n.scenario.iloc[0] == scenario])
+                batches.append(df)
+        part = pd.concat([n for n in batches if n.scenario.iloc[0] == scenario])
         end, keeps = part[part.turn == 300], part[part.kept]
         print(
             pd.DataFrame(
@@ -744,18 +746,18 @@ def compare_systems(lab) -> None:
             .round(3)
             .to_string()
         )
-    pd.concat(nights).to_csv("night_sim.csv", index=False)
+    pd.concat(batches).to_csv("loop_sim.csv", index=False)
     print(
-        "\nAverages over 10 nights of 300 turns each. MWh per day; gain = how much the average miss shrank."
+        "\nAverages over 10 batches of 300 turns each. MWh per day; gain = how much the average miss shrank."
     )
     print("'flukes' = kept changes that made the true error worse.")
 
 
 def compare_counts(lab) -> None:
-    """Spend the same 300 ideas in one night and in 12 nights with advances, and print what was kept.
+    """Spend the same 300 ideas in one batch and in 12 batches with advances, and print what was kept.
 
-    The 12 nights are run under the three rules for the try count, without and with retries.
-    Both of the robot's fixes are on. Every turn is saved in night_sim_advance.csv.
+    The 12 batches are run under the three rules for the try count, without and with retries.
+    Both of the robot's fixes are on. Every turn is saved in loop_sim_advance.csv.
 
     Parameters
     ----------
@@ -789,7 +791,7 @@ def compare_counts(lab) -> None:
                 )
         print(f"\n{scenario}")
         print(pd.DataFrame(summary).groupby("run", sort=False).mean().round(3).to_string())
-    pd.concat(runs).to_csv("night_sim_advance.csv", index=False)
+    pd.concat(runs).to_csv("loop_sim_advance.csv", index=False)
     print(f"\nAverages over {SEEDS} runs of 300 ideas each, every run judged on a town of its own.")
     print("MWh per day; gain = how much the average miss shrank.")
     print(

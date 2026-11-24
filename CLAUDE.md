@@ -71,7 +71,7 @@ The lessons are meant to carry over to real problems like these.
 
   The judge stops if the store does not reach the as-of date or has no month before the
   practice period.
-- `loop.py advance`, by hand, between nights: moves the as-of date to the store's newest
+- `loop.py advance`, by hand, between batches: moves the as-of date to the store's newest
   month (one month or many), measures the champion on the new practice and validation
   periods, and adds the `advanced` row. It changes no model and scores nothing on the
   holdout period. The tries from before it then count for less (the try count, below), so
@@ -83,7 +83,7 @@ The lessons are meant to carry over to real problems like these.
 - Keep rule: reshuffle the 52 scored weeks 10,000 times. An idea must win at least
   1 - 5% / (try count + 1) of reshuffles (95% for the 1st idea, 99.5% for the 10th, 99.95%
   for the 100th), which keeps the expected number of lucky keeps under one for a 300-idea
-  night.
+  batch.
 - Try count (issue #5; `try_count()` in `loop.py`; reasons in `docs/adr/0002`). A try counts
   in proportion to how many of the months it was judged on are still in the validation
   period: for each judged row, `(12 - months between its as-of date and the current one) / 12`,
@@ -105,14 +105,14 @@ The lessons are meant to carry over to real problems like these.
   slightly, because that sharpens the estimate of today's actual temperature. A real project
   has no answer key, so the loop never runs it; score it with
   `uv run judge/judge.py score val scripts/answer_key.py`.
-- `scripts/night_sim.py` re-implements the judge for speed (it reproduces the judge's scores
-  exactly, under every as-of date from 2025-12 to 2026-12) and simulates whole nights with a
+- `scripts/loop_sim.py` re-implements the judge for speed (it reproduces the judge's scores
+  exactly, under every as-of date from 2025-12 to 2026-12) and simulates whole batches with a
   random-tweak robot. Its towns are made by `make_data.py`'s own `town()`: generators 7 and
   8 give the real town, pretend future included. True error is measured on 100 parallel
-  towns: the same recipe with fresh weather and noise. `uv run scripts/night_sim.py advance`
-  spends the 300 ideas over 12 nights with a one-month advance between them, under three
+  towns: the same recipe with fresh weather and noise. `uv run scripts/loop_sim.py advance`
+  spends the 300 ideas over 12 batches with a one-month advance between them, under three
   rules for the try count (finding 8). If you change the judge's rules or the loop's
-  `try_count()`, change `scripts/night_sim.py` to match.
+  `try_count()`, change `scripts/loop_sim.py` to match.
 - `scripts/bundle_sim.py` tests whether small changes add up (finding 6).
 
 ## What we learned (MWh per day; "luck" = one standard deviation of a measured gain)
@@ -120,10 +120,10 @@ The lessons are meant to carry over to real problems like these.
    weekday effects and temperature. In one turn the agent tried 7 thresholds on the scored
    year and submitted the best; it looked better there and worse on the holdout, and the keep
    rule threw it out.
-2. Simulated 300-idea nights (half setting tweaks, half pure-noise inputs), old rules: about
-   9 flukes kept per night; the ledger claimed +0.45 while the truth was +0.22, and real
+2. Simulated 300-idea batches (half setting tweaks, half pure-noise inputs), old rules: about
+   9 flukes kept per batch; the ledger claimed +0.45 while the truth was +0.22, and real
    progress stopped after about 30 ideas. From an already-optimal model: 12 noise inputs
-   kept, ledger +0.21, truth -0.03. Hiding the scored year cut flukes to under 1 per night;
+   kept, ledger +0.21, truth -0.03. Hiding the scored year cut flukes to under 1 per batch;
    adding the rising bar made it 0 (ledger +0.24, truth +0.20), at a small cost in real gains.
 3. Neighbouring days are only weakly linked in this toy (about +0.1), so reshuffling whole
    weeks barely matters here. It is kept for real data (weather spells, same-day race conditions).
@@ -147,18 +147,18 @@ The lessons are meant to carry over to real problems like these.
    idea (won 100%; validation 2.14 and holdout 2.06 with noise added, 0.00 without), and it passed
    `check.py`. The holdout agreed, so every statistical guard failed at once. Isolation, not
    statistics, stops this; the model sandbox now makes it crash (`tests/test_sandboxes.py`).
-8. What a try counts after an advance (`scripts/night_sim.py advance`: the same 300 ideas in
-   one night, and in 12 nights of 25 with a one-month advance between them; 30 runs, each
+8. What a try counts after an advance (`scripts/loop_sim.py advance`: the same 300 ideas in
+   one batch, and in 12 batches of 25 with a one-month advance between them; 30 runs, each
    judged on a town of its own). Each cell: from turn 2's model / from an already-optimal
    one. From turn 2's model a lucky keep is a kept change that did not make the true error
    smaller. From the already-optimal model every kept change counts as one.
 
    | 300 ideas | Lucky keeps per run | The same with retries | Ledger gain | True gain | Bar after the 300 ideas |
    |---|---|---|---|---|---|
-   | One night, no advance | 0.07 / 0.10 | | +0.15 / 0 | +0.13 / 0 | 99.97% |
-   | 12 nights, keep the count | 0.10 / 0.03 | 0.07 / 0.07 | +0.22 / 0 | +0.18 / 0 | 99.98% |
-   | 12 nights, reset the count | 0.60 / 0.60 | 0.43 / 0.53 | +0.25 / +0.01 | +0.21 / 0 | 99.70% |
-   | 12 nights, tries fade (the loop's rule) | 0.10 / 0.03 | 0.10 / 0.07 | +0.22 / 0 | +0.18 / 0 | 99.95% |
+   | One batch, no advance | 0.07 / 0.10 | | +0.15 / 0 | +0.13 / 0 | 99.97% |
+   | 12 batches, keep the count | 0.10 / 0.03 | 0.07 / 0.07 | +0.22 / 0 | +0.18 / 0 | 99.98% |
+   | 12 batches, reset the count | 0.60 / 0.60 | 0.43 / 0.53 | +0.25 / +0.01 | +0.21 / 0 | 99.70% |
+   | 12 batches, tries fade (the loop's rule) | 0.10 / 0.03 | 0.10 / 0.07 | +0.22 / 0 | +0.18 / 0 | 99.95% |
 
    Gains and bars are without retries. A retry tries again, as it was, an idea thrown away
    under an older as-of date: 3 turns in 10 after each advance, the idea picked at random.
@@ -175,7 +175,7 @@ The lessons are meant to carry over to real problems like these.
      99.92% against a bar of 99.89%, as the validation period moved on a month each time.
      For that idea, a retry after a one-month advance was far from the same test again.
    - Why: each judged idea may be a lucky keep with a chance of at most 5% / (try count + 1).
-     With about 17 ideas judged a night, those chances add up over the 12 nights to 0.30
+     With about 17 ideas judged in each batch, those chances add up over the 12 batches to 0.30
      with a kept count, 0.33 with fading and 2.1 with a reset. The measured counts are a
      third of that or less, in the same order, as expected when a made-up input truly hurts
      a little.
@@ -183,18 +183,19 @@ The lessons are meant to carry over to real problems like these.
      tries arrive faster than old ones fade. They part later: at this pace the fading count
      levels off near 100 (a bar of 99.95%, and by the same sum at most 0.1 lucky keeps a
      year), a kept count grows for good, and when the research pauses the fading bar comes
-     back down. The gap is wider at a slower pace: with 3 ideas judged a night, the fading
-     count levels off at 20 (99.76%), where a kept count reaches 108 in three years (99.95%).
-   - The same 300 ideas found more real gain over 12 nights than in one (+0.18 against
-     +0.13; the gap's luck is 0.017). In one night every idea meets the same validation
-     months: in 9 of the 30 single nights nothing was kept, against 1 with advances. (Truth
+     back down. The gap is wider at a slower pace: with 3 ideas judged for each one-month
+     advance, the fading count levels off at 20 (99.76%), where a kept count reaches 108 in
+     three years (99.95%).
+   - The same 300 ideas found more real gain over 12 batches than in one (+0.18 against
+     +0.13; the gap's luck is 0.017). In one batch every idea meets the same validation
+     months: in 9 of the 30 single batches nothing was kept, against 1 with advances. (Truth
      is measured on the months of each run's last as-of date, so on later months for the 12
-     nights. That moves it little: the ideas kept on the first night, the same in both,
+     batches. That moves it little: the ideas kept on the first batch, the same in both,
      measure +0.087 on the earlier months and +0.089 on the later ones.)
    - Two checks were made once, with throwaway scripts that are not in this repo (the pull
      request for issue #5 has the numbers). Judged on the real town alone, the lucky keeps
      were alike (fading 0 to 0.07, keeping 0 to 0.07, resetting 0.27 to 0.70), but the single
-     night gained more than the 12 nights (+0.19 against +0.14): one town's validation
+     batch gained more than the 12 batches (+0.19 against +0.14): one town's validation
      months are one draw of luck, which is why each run now gets its own town. And when the
      robot retried the same few ideas after every advance, up to 12 times in the year,
      fading kept 0.07 / 0.10 lucky ideas per run.
@@ -203,7 +204,7 @@ The lessons are meant to carry over to real problems like these.
 - Allow practice-year bundles: let the agent submit several ideas that each helped on its
   practice year as one try, and see whether it captures turn 3's real gain.
 - The agent's ledger now shows practice numbers and verdicts only (issue #1). Unproven so
-  far: run a real night and see whether practice numbers steer it. What still leaks is one
+  far: run a real batch and see whether practice numbers steer it. What still leaks is one
   fact per judged idea: whether it cleared the bar.
 - An idea is judged only if it wins at least 90% of practice reshuffles: `SUBMIT_PCT` in
   `loop.py`, enforced by the loop and written on top of the agent's ledger, where step 5 of
@@ -218,8 +219,8 @@ The lessons are meant to carry over to real problems like these.
   months.
 - Port the judge to the real load-forecasting data. For racing, score by log loss against the
   market's odds rather than by ROI.
-- Nothing stops an advance during a night; add a guard only if it goes wrong.
-- `scripts/night_sim.py`'s robot submits every idea that looks better on its practice period:
+- Nothing stops an advance during a batch; add a guard only if it goes wrong.
+- `scripts/loop_sim.py`'s robot submits every idea that looks better on its practice period:
   it has no `SUBMIT_PCT`. So about 200 of its 300 ideas are judged, far more than the real
   loop would judge, and its try counts run higher than a real ledger's will.
 

@@ -204,7 +204,7 @@ def bar(number) -> float:
     """Work out the share of re-deals an idea must win to be kept: 1 - 5% / number.
 
     That is 95% for the 1st idea judged, 99.5% for the 10th and 99.95% for the 100th. Over
-    a whole night, it keeps the expected number of lucky keeps under one.
+    a batch of 300 ideas, it keeps the expected number of lucky keeps under one.
 
     Parameters
     ----------

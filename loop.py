@@ -14,7 +14,7 @@ Each turn:
   5. keep it (new champion) or throw it away, and write the verdict into both ledgers
 
     uv run loop.py run 5     # five more turns (continues from the ledger)
-    uv run loop.py advance   # by hand, between nights: move the as-of date to the store's newest month
+    uv run loop.py advance   # by hand, between batches: move the as-of date to the store's newest month
     uv run loop.py holdout   # score the holdout period once, at the end
     uv run loop.py reset     # back to the baseline, and to the as-of date the research started under
     uv run loop.py build     # build the Docker images (run, advance and holdout do this first anyway)
@@ -622,7 +622,7 @@ def advance() -> None:
     """Move the as-of date forward to the newest month in the data store.
 
     The months that have arrived since become part of the research. Run it by hand, between
-    nights.
+    batches.
 
     The four periods move with the as-of date, by whole months: one or many, depending on
     how long it has been since the last advance. The champion is then measured on the new

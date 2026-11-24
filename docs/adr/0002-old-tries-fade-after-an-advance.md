@@ -20,15 +20,15 @@ next idea must win 99.40% of reshuffles instead of 99.44%.
   of reshuffles for good, even once every validation month is new.
 - **Reset the count at each advance.** With monthly advances, 11 of the 12 validation months
   are unchanged, so the bar would drop to 95% on nearly the same data. Without a rising bar,
-  simulated nights kept about 9 lucky ideas each (CLAUDE.md, finding 2).
+  simulated batches kept about 9 lucky ideas each (CLAUDE.md, finding 2).
 
 ## Consequences
 
 - The try count is no longer a whole number.
 - This rule is our own, not one taken from the published work in `docs/research.md`. It is
-  checked by simulation in `scripts/night_sim.py`, which mirrors the judge's rules.
-- The check (2026-11-23, `uv run scripts/night_sim.py advance`; CLAUDE.md, finding 8): 300
-  ideas over 12 nights a month apart, 30 runs. Letting tries fade kept 0.03 to 0.10 lucky
+  checked by simulation in `scripts/loop_sim.py`, which mirrors the judge's rules.
+- The check (2026-11-23, `uv run scripts/loop_sim.py advance`; CLAUDE.md, finding 8): 300
+  ideas over 12 batches a month apart, 30 runs. Letting tries fade kept 0.03 to 0.10 lucky
   ideas per run, about as many as keeping the count (0.03 to 0.10). Resetting the count
   kept 0.43 to 0.60.
 - In the first year the rule is close to keeping the count, because new tries arrive faster
