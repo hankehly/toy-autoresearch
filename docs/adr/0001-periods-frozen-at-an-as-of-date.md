@@ -13,7 +13,7 @@ comparison would mean anything.
 
 ## Considered options
 
-- **Follow the newest data on every run.** Always current, but two turns of the same night
+- **Follow the newest data on every run.** Always current, but two turns of the same batch
   could be judged on different months.
 - **Never move the periods.** Simplest, but the agent's data and the validation period grow
   stale while new months pile up unused.

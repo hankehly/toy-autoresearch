@@ -20,10 +20,10 @@ that was picked on the scored year adds up too, so pick the pieces on data the t
 import numpy as np
 import pandas as pd
 
-import night_sim as S
+import loop_sim as S
 
 BETA = 1.4  # MWh added on each event day
-EVENTS = tuple(range(2, 22, 2))  # even ids are event calendars (10% of days) in night_sim.junk
+EVENTS = tuple(range(2, 22, 2))  # even ids are event calendars (10% of days) in loop_sim.junk
 
 
 class EventTown(S.Town):

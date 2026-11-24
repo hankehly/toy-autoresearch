@@ -31,7 +31,7 @@ The smallest working version of an agent research loop, with guards against over
                 make_data.py       rebuilds the fake town (seeded, so you get the same data)
                 ingest.py          lets time pass: moves months from the pretend future into the store
                 answer_key.py      the recipe that made the data, as a model: about the best possible score
-                night_sim.py       simulates whole nights of 300 ideas, in one night or over 12 nights
+                loop_sim.py        simulates whole batches of 300 ideas, in one batch or over 12 batches
                                    with advances, and checks every keep against the truth
                 bundle_sim.py      tests whether small changes add up when submitted together
     tests/      the tests (pytest). `uv run pytest` runs them all, in about 3.5 minutes:
@@ -84,7 +84,7 @@ never changes a month already there. In a real project the job that builds the d
 
 Months that arrive move nothing by themselves. The periods stay where they are, and no
 sandbox is shown a month after the as-of date, until a person runs `uv run loop.py advance`
-between nights. That moves the as-of date to the store's newest month, so all four periods
+between batches. That moves the as-of date to the store's newest month, so all four periods
 move forward by the same number of months. It then measures the champion on the new practice
 and validation periods and adds one `advanced` row to the ledgers. It changes no model and
 scores nothing on the holdout period.
@@ -111,10 +111,10 @@ Needs Docker Desktop (running), Claude Code and [uv](https://docs.astral.sh/uv/)
     uv run loop.py run 5              # five agent turns
     uv run loop.py holdout            # score the holdout period once, at the end
     uv run scripts/ingest.py --through 2026-06   # later: new months arrive in the store
-    uv run loop.py advance            # by hand, between nights: move the as-of date to the store's newest month
+    uv run loop.py advance            # by hand, between batches: move the as-of date to the store's newest month
     uv run loop.py reset              # start over from the baseline, at the as-of date the research started under
-    uv run scripts/night_sim.py       # the overnight experiment, no agent needed (about 5 minutes)
-    uv run scripts/night_sim.py advance   # the same 300 ideas over 12 nights with advances (about 16 minutes)
+    uv run scripts/loop_sim.py        # simulated batches of 300 ideas, no agent needed (about 5 minutes)
+    uv run scripts/loop_sim.py advance   # the same 300 ideas over 12 batches with advances (about 16 minutes)
 
 The ledgers and history/ in this folder are from the example run below (agent: Claude Sonnet
 via `claude -p`; change the model in loop.py). `uv run loop.py reset` clears them.
@@ -160,7 +160,7 @@ Every row was measured under the as-of date 2025-12: the practice period is 2023
 "Won" is the share of 10,000 reshuffles of the year's weeks in which the idea beat the
 champion of the time. The practice columns were measured afterwards, for turns 0-6.
 The answer key is the recipe that made the data, which a real project doesn't have. The
-loop never runs it; `scripts/night_sim.py` prints its scores, and
+loop never runs it; `scripts/loop_sim.py` prints its scores, and
 `uv run judge/judge.py score val scripts/answer_key.py` gives the same.
 
 Checked afterwards on 50 parallel towns: turns 2, 4 and 5 were truly no better, so the
@@ -216,7 +216,7 @@ Only a try raises the bar. An `advanced` row is not a turn either, so it has no 
 The second line on top of the agent's copy gives the try count and the bar the next idea
 must clear (see "The keep rule").
 
-## What night_sim.py found (10 nights of 300 ideas each, MWh)
+## What loop_sim.py found (10 batches of 300 ideas each, MWh)
 
 "Flukes" are kept changes that made the true error worse. "Ledger" is how much the
 scored-year miss shrank; "truth" is how much the true miss shrank (100 parallel towns).
@@ -228,11 +228,11 @@ scored-year miss shrank; "truth" is how much the true miss shrank (100 parallel 
     rising bar only    0.6      +0.22    +0.17           0        0        0
     both (this toy)    0        +0.24    +0.20           0        0        0
 
-## What `night_sim.py advance` found (30 runs of 300 ideas each, MWh)
+## What `loop_sim.py advance` found (30 runs of 300 ideas each, MWh)
 
 After an advance, some of the months an old try was judged on have left the validation
 period. What should that try still count? The simulation spends the same 300 ideas in one
-night, and in 12 nights of 25 with a one-month advance between them, under three rules:
+batch, and in 12 batches of 25 with a one-month advance between them, under three rules:
 keep the count, reset it at each advance, or let old tries fade (this toy's rule, see
 "The keep rule"). "Lucky" is the number of lucky keeps per run. From turn 2's model, a
 lucky keep is a kept change that did not make the true error smaller. The best model is
@@ -241,10 +241,10 @@ Every run is judged on a town of its own.
 
                                            starting from turn 2's model     starting from the best model
                                            lucky   ledger   truth           lucky   ledger   truth
-    one night of 300, no advance           0.07    +0.15    +0.13           0.10    0        0
-    12 nights, keep the count              0.10    +0.22    +0.18           0.03    0        0
-    12 nights, reset the count             0.60    +0.25    +0.21           0.60    +0.01    0
-    12 nights, tries fade (this toy)       0.10    +0.22    +0.18           0.03    0        0
+    one batch of 300, no advance           0.07    +0.15    +0.13           0.10    0        0
+    12 batches, keep the count              0.10    +0.22    +0.18           0.03    0        0
+    12 batches, reset the count             0.60    +0.25    +0.21           0.60    +0.01    0
+    12 batches, tries fade (this toy)       0.10    +0.22    +0.18           0.03    0        0
     with retries, keep the count           0.07    +0.22    +0.18           0.07    0        0
     with retries, reset the count          0.43    +0.25    +0.22           0.53    +0.01    0
     with retries, tries fade (this toy)    0.10    +0.21    +0.18           0.07    0        0
@@ -267,11 +267,11 @@ thrown away under an older as-of date. The brief allows this, and a retry counts
   against 99.98%. They part later. At a steady pace the fading count levels off (here near
   100 tries) while a kept count grows for good, and when the research pauses the fading
   bar comes back down.
-- The same 300 ideas found more real gain over 12 nights than in one (+0.18 against +0.13).
-  In one night every idea meets the same validation months, and in 9 of the 30 single
-  nights nothing was kept at all. With advances that happened once. (Truth is measured on
-  the months of each run's last as-of date, so on later months for the 12 nights. That
-  moves it little: the ideas kept on the first night, the same in both, measure +0.087 on
+- The same 300 ideas found more real gain over 12 batches than in one (+0.18 against +0.13).
+  In one batch every idea meets the same validation months, and in 9 of the 30 single
+  batches nothing was kept at all. With advances that happened once. (Truth is measured on
+  the months of each run's last as-of date, so on later months for the 12 batches. That
+  moves it little: the ideas kept on the first batch, the same in both, measure +0.087 on
   the earlier months and +0.089 on the later ones.)
 
 ## The keep rule
@@ -280,7 +280,7 @@ The judge re-deals the 52 scored weeks 10,000 times (some weeks twice, some not 
 and keeps a change only if it has the lower average miss in nearly all of the re-deals.
 The bar rises with the try count: the next idea must win 1 - 5% / (try count + 1) of the
 re-deals. So the 1st idea must win 95%, the 10th 99.5%, the 100th 99.95%.
-Added up over a whole night, that keeps the expected number of lucky keeps below one.
+Added up over a batch of 300 ideas, that keeps the expected number of lucky keeps below one.
 Whole weeks are re-dealt together because neighbouring days share weather.
 
 A try counts 1 until the next advance. An advance replaces some of the validation months
@@ -302,7 +302,7 @@ bar that follows from it.
 ## Three guards against overfitting
 
 1. The agent never has the answers for the period it's graded on, so it can't tune on it.
-2. The bar rises with the try count, so a long night can't win by sheer volume. A try
+2. The bar rises with the try count, so a long batch can't win by sheer volume. A try
    counts for less only once an advance has replaced months it was judged on.
 3. The holdout is scored once. If you change things because of what it says, it becomes
    another validation set, so then you need fresh months to check on.
