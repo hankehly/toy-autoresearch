@@ -1,7 +1,7 @@
 # Toy autoresearch
 
 Context for Claude Code. This project started in a Claude chat (2026-11-05 to 2026-11-08); this file
-carries over what was decided and learned there. README.md describes the files and commands.
+carries over what was decided and learned there, and in the work since (through 2026-11-24, finding 9). README.md describes the files and commands.
 
 ## Goal
 Hank wants AI agents to run the iterative research and model-building for predictive
@@ -127,10 +127,11 @@ The lessons are meant to carry over to real problems like these.
    adding the rising bar made it 0 (ledger +0.24, truth +0.20), at a small cost in real gains.
 3. Neighbouring days are only weakly linked in this toy (about +0.1), so reshuffling whole
    weeks barely matters here. It is kept for real data (weather spells, same-day race conditions).
-4. Run 2, new rules (the current ledger and history): turn 1 went straight to a weekday plus
-   heating/cooling regression (validation 2.92, holdout 2.75), and the next 4 ideas were rejected.
-   Checked on 50 parallel towns, 3 were truly no better, but turn 3 (add yesterday's
-   temperatures) was truly better by 0.039, while one scored year's luck was 0.049.
+4. Run 2, new rules (turns 1 to 8 in the ledger and history): turn 1 went straight to a weekday
+   plus heating/cooling regression (validation 2.92, holdout 2.75), and the next 5 ideas judged
+   (turns 2 to 6) were thrown away. Checked on 50 parallel towns, turns 2, 4 and 5 were truly
+   no better, but turn 3 (add yesterday's temperatures) was truly better by 0.039, while one
+   scored year's luck was 0.049. Turn 6 was truly no better too (finding 9).
    Small exams miss small gains.
 5. Luck shrinks with the square root of the size of the scored set. A pure-noise input
    (best of 7) clears the old rule 11% / 5% / 0% of the time with 1 / 10 / 100 scored years.
@@ -276,7 +277,7 @@ The lessons are meant to carry over to real problems like these.
   program.md points. 90% means a gain of about 1.3 times its own luck, in any units. In the
   first real batch 14 of 25 ideas cleared it, and it stopped 10 ideas that were truly not
   better and 1 that was (finding 9). Revisit it once the full ledger has a few dozen judged
-  ideas; it has 15.
+  ideas; it has 16.
 - Near-misses: the brief (rule 2) now lets the agent try again, as it was, an idea thrown
   away under an older as-of date, and the retry counts as a try. In simulation a retry was
   about as likely to be a lucky keep as a new idea (finding 8). Unproven with a real agent:
@@ -332,9 +333,11 @@ The lessons are meant to carry over to real problems like these.
   `advance` and `holdout` do it first anyway); `uv run pytest tests/test_sandboxes.py` checks the isolation
   (about 30 s).
 - The agent sandbox can't use the Mac's Keychain login, so `loop.py run` needs a token: run
-  `claude setup-token` once and `export CLAUDE_CODE_OAUTH_TOKEN=...` in the shell. The sandbox
-  runs `claude -p --model sonnet` with Claude Code 2.1.319. Our agent turns cost about
-  $0.11-0.16 each (Claude Code's own estimate).
+  `claude setup-token` once and `export CLAUDE_CODE_OAUTH_TOKEN=...` in the shell, or put
+  `CLAUDE_CODE_OAUTH_TOKEN=...` in `.env` (git-ignored) and run
+  `uv run --env-file .env loop.py run N`. The sandbox runs `claude -p --model sonnet` with
+  Claude Code 2.1.319. In the first real batch (turns 9 to 33) a turn cost $0.03 to $0.12,
+  usually about $0.05 (Claude Code's own estimate, `total_cost_usd` in `history/`).
 - The proxy stays up after a run; `docker exec toy-agent-proxy cat /var/log/squid/access.log`
   lists every request the agent sent through it, until the next run or test run replaces
   the proxy. Attempts to go around the proxy fail without a trace.
