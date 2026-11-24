@@ -199,18 +199,84 @@ The lessons are meant to carry over to real problems like these.
      months are one draw of luck, which is why each run now gets its own town. And when the
      robot retried the same few ideas after every advance, up to 12 times in the year,
      fading kept 0.07 / 0.10 lucky ideas per run.
+9. The first batch with a real agent under these rules (turns 9 to 33, on 2026-11-24, as-of
+   date 2025-12; about 10 minutes and $1.28): 10 ideas judged, none kept. Each idea was
+   then measured against the champion on 100 parallel towns, which gives its true gain to
+   about 0.003. "Truly better" means a true gain clearly above zero.
+
+   | Turns 9 to 33 | Truly better | Not better |
+   |---|---|---|
+   | Judged and thrown away | 9 | 1 |
+   | Cleared the practice gate, but the agent chose not to submit | 4 | 0 |
+   | Under the 90% practice gate | 1 | 10 |
+   | Kept | 0 | 0 |
+
+   - The judge kept no lucky idea and no truly better one. Of turns 2 to 6, judged before
+     the practice gate existed, one was truly better (turn 3) and four were not; all five
+     were thrown away.
+   - The truly better ideas are three pieces and their bundles, and each is small against
+     the champion's miss of 2.9:
+
+     | Piece | Turns | True gain | One validation year's luck | Gain / luck |
+     |---|---|---|---|---|
+     | Temperature of the last 1 to 7 days | 3, 12, 16, 17 | 0.025 to 0.040 | 0.028 to 0.034 | 0.9 to 1.2 |
+     | The recipe's own thresholds, 16C and 22C | 31 | 0.017 | 0.029 | 0.6 |
+     | Monday to Friday pooled into one level | 19 | 0.008 | 0.011 | 0.7 |
+     | All three together | 33 | 0.063 | 0.039 | 1.6 |
+
+   - Why none was kept: an idea clears a bar of 99.7% when its gain is about 2.7 times one
+     validation year's luck, and the best ratio here is 1.6. On 200 towns, turn 33 would
+     clear a 95% bar in 48% of them and the 99.71% bar in 15%; turn 19 in 12% and 1%. (These
+     shares use a normal approximation of the week reshuffle.) "Thrown away" means "not
+     proven on one validation year", not "wrong".
+   - Under this as-of date the judge can no longer keep the data's own recipe. Scored as
+     the next idea, `scripts/answer_key.py` wins 97.89% of reshuffles (2.830 against 2.915):
+     enough for the 1st or 2nd idea judged, and for none after. That gap of 0.085 is a
+     lucky year for the recipe. On parallel towns it truly beats the champion by 0.017, and
+     turn 33 beats the recipe: fitted numbers and lagged temperatures make up for part of
+     the forecast's error.
+   - The practice gate and the agent's own judgement filtered well: 10 of the 11 ideas the
+     gate stopped were truly not better, and 9 of the 10 that reached the judge were truly
+     better. The four the agent held back were truly better too; it called them near-copies
+     of ideas the judge had thrown away, which they were.
+   - Practice numbers steer the agent (every lesson cites them), and they run high. Turn
+     33's practice gain (0.251) is four times its true gain. Turn 16 won 99.99% of practice
+     reshuffles and 29.94% of the judge's.
+   - The agent bundles without being asked: turns 20, 21, 24, 25, 29, 30, 32 and 33 each
+     combine pieces that helped on practice. Each bundle that was submitted was a try on
+     the same validation months.
+   - Methods that are strong on real load data were truly worse here, because the recipe
+     has no such effect: holidays treated like Sundays (turn 26, 0.278 worse), a correction
+     from the last 7 or 14 days' misses (turn 15, 0.045 worse), a linear trend (turn 23,
+     0.009 worse). The gate stopped all three. The toy's verdict on a method says nothing
+     about that method on real data. What carries over is the judge's limit.
+   - That limit, for the real data: before running batches, measure the smallest gain the
+     judge can certify. Here it is 1% to 4% of the miss, depending on how much an idea
+     changes the predictions. Luck shrinks with the square root of the validation period's
+     length (finding 5), so three years in place of one would lift turn 33's ratio from 1.6
+     to about 2.8. That is worked out, not simulated.
+   - The parallel towns were scored with a throwaway script that is not in this repo (the
+     pull request for this finding has every turn's numbers). On the real town it gives
+     the judge's own validation scores for the six models checked.
 
 ## Open threads
-- Allow practice-year bundles: let the agent submit several ideas that each helped on its
-  practice year as one try, and see whether it captures turn 3's real gain.
-- The agent's ledger now shows practice numbers and verdicts only (issue #1). Unproven so
-  far: run a real batch and see whether practice numbers steer it. What still leaks is one
-  fact per judged idea: whether it cleared the bar.
+- The judge's limit (finding 9): under as-of date 2025-12 it can certify no gain that is
+  left in this town. Measure the smallest gain a judge can certify before running batches,
+  here and on the real data, and try a longer validation period: the pretend future has
+  the months, after an advance.
+- Practice-period bundles: the agent already submits them without being asked (finding 9),
+  and the best one (turn 33) holds turn 3's real gain and was still thrown away. Open: no
+  rule says how a bundle of pieces that were each judged alone should count as a try.
+- The agent's ledger shows practice numbers and verdicts only (issue #1). Practice numbers
+  do steer the agent, and they run high (finding 9). What still leaks is one fact per judged
+  idea, whether it cleared the bar, and the agent uses it: it held back four ideas as
+  near-copies of thrown-away ones.
 - An idea is judged only if it wins at least 90% of practice reshuffles: `SUBMIT_PCT` in
   `loop.py`, enforced by the loop and written on top of the agent's ledger, where step 5 of
-  program.md points. 90% means a gain of about 1.3 times its own luck, in any units. It is
-  a starting point (in run 2 only turn 3 would have cleared it). Revisit it once the full
-  ledger has a few dozen judged ideas.
+  program.md points. 90% means a gain of about 1.3 times its own luck, in any units. In the
+  first real batch 14 of 25 ideas cleared it, and it stopped 10 ideas that were truly not
+  better and 1 that was (finding 9). Revisit it once the full ledger has a few dozen judged
+  ideas; it has 15.
 - Near-misses: the brief (rule 2) now lets the agent try again, as it was, an idea thrown
   away under an older as-of date, and the retry counts as a try. In simulation a retry was
   about as likely to be a lucky keep as a new idea (finding 8). Unproven with a real agent:
