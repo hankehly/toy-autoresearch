@@ -1,0 +1,110 @@
+{
+  "seconds": 22,
+  "response": {
+    "duration_api_ms": 19009,
+    "stop_reason": "tool_use",
+    "session_id": "0b40508a-1a4c-4a1f-955b-f5b1a6cdec16",
+    "total_cost_usd": 0.0517079,
+    "usage": {
+      "input_tokens": 16,
+      "cache_creation_input_tokens": 4205,
+      "cache_read_input_tokens": 165459,
+      "output_tokens": 1831,
+      "output_tokens_details": {
+        "thinking_tokens": 337
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 4205,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 16,
+        "outputTokens": 1831,
+        "cacheReadInputTokens": 165459,
+        "cacheCreationInputTokens": 4205,
+        "webSearchRequests": 0,
+        "costUSD": 0.0517079,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 337,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 4205,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [
+      {
+        "tool_name": "Bash",
+        "tool_use_id": "toolu_013DxdKiqYF6PEL3yLapMgvH",
+        "tool_input": {
+          "command": "cd /work; sed -i 's/tail(7)/tail(14)/;s/0.5 \\* r.mean/0.8 * r.mean/' model.py; python check.py && python practice.py champion.py model.py"
+        }
+      }
+    ],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 10,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"idea\":\"Add recent 7/14-day mean residual as level correction\",\"lesson\":\"Short-window residual level corrections (7 or 14 days) give no gain over the plain regression, so the remaining error looks like day-to-day noise.\",\"practice\":{\"champion_mae\":3.036,\"model_mae\":3.06,\"wins_pct\":33.75},\"submit\":false}",
+    "structured_output": {
+      "idea": "Add recent 7/14-day mean residual as level correction",
+      "lesson": "Short-window residual level corrections (7 or 14 days) give no gain over the plain regression, so the remaining error looks like day-to-day noise.",
+      "practice": {
+        "champion_mae": 3.036,
+        "model_mae": 3.06,
+        "wins_pct": 33.75
+      },
+      "submit": false
+    },
+    "ttft_ms": 1275,
+    "type": "result",
+    "duration_ms": 20918,
+    "uuid": "9e00a10e-7b2d-465e-8b9c-f5fb7f6d0d63",
+    "ttft_stream_ms": 900,
+    "time_to_request_ms": 53,
+    "first_content_frame_ms": 901,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}

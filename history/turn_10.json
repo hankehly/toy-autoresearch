@@ -1,0 +1,110 @@
+{
+  "seconds": 22,
+  "response": {
+    "duration_api_ms": 19191,
+    "stop_reason": "tool_use",
+    "session_id": "ccdce719-55b2-472d-989a-6a9d76147603",
+    "total_cost_usd": 0.0418271,
+    "usage": {
+      "input_tokens": 16,
+      "cache_creation_input_tokens": 3015,
+      "cache_read_input_tokens": 161451,
+      "output_tokens": 1359,
+      "output_tokens_details": {
+        "thinking_tokens": 243
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 3015,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 16,
+        "outputTokens": 1359,
+        "cacheReadInputTokens": 161451,
+        "cacheCreationInputTokens": 3015,
+        "webSearchRequests": 0,
+        "costUSD": 0.0418271,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 243,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 3015,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [
+      {
+        "tool_name": "Bash",
+        "tool_use_id": "toolu_01Vw1vQVz7zNseZ2ygKdFW8C",
+        "tool_input": {
+          "command": "cd /work; sed -i 's/age \\/ 120/age \\/ 300/' model.py; python practice.py champion.py model.py"
+        }
+      }
+    ],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 9,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"idea\":\"Exponentially time-weighted regression fit favoring recent days\",\"lesson\":\"Recency weighting doesn't help (half-life 120d worse, 300d tied); the stable linear fit is already near the noise floor.\",\"practice\":{\"champion_mae\":3.036,\"model_mae\":3.036,\"wins_pct\":50.2},\"submit\":false}",
+    "structured_output": {
+      "idea": "Exponentially time-weighted regression fit favoring recent days",
+      "lesson": "Recency weighting doesn't help (half-life 120d worse, 300d tied); the stable linear fit is already near the noise floor.",
+      "practice": {
+        "champion_mae": 3.036,
+        "model_mae": 3.036,
+        "wins_pct": 50.2
+      },
+      "submit": false
+    },
+    "ttft_ms": 1266,
+    "type": "result",
+    "duration_ms": 20754,
+    "uuid": "4b5923a1-9d5a-4330-afc1-d30e4311095b",
+    "ttft_stream_ms": 875,
+    "time_to_request_ms": 52,
+    "first_content_frame_ms": 875,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}

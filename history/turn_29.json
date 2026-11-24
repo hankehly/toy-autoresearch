@@ -1,0 +1,102 @@
+{
+  "seconds": 19,
+  "response": {
+    "duration_api_ms": 16870,
+    "stop_reason": "tool_use",
+    "session_id": "5cd495fe-bbc8-4b1b-964b-61a7a2c13658",
+    "total_cost_usd": 0.0485788,
+    "usage": {
+      "input_tokens": 10,
+      "cache_creation_input_tokens": 5080,
+      "cache_read_input_tokens": 100088,
+      "output_tokens": 1823,
+      "output_tokens_details": {
+        "thinking_tokens": 455
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 5080,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 10,
+        "outputTokens": 1823,
+        "cacheReadInputTokens": 100088,
+        "cacheCreationInputTokens": 5080,
+        "webSearchRequests": 0,
+        "costUSD": 0.0485788,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 455,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 5080,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 6,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"idea\":\"Add prior-3-day max/min temperature extremes as heat/cold features, pooled weekdays\",\"lesson\":\"Prior-3-day temperature extremes give only a small gain (3.036 to 2.945), weaker than earlier lagged-mean features, and likely too small for the judge's bar.\",\"practice\":{\"champion_mae\":3.036,\"model_mae\":2.945,\"wins_pct\":92.43},\"submit\":true}",
+    "structured_output": {
+      "idea": "Add prior-3-day max/min temperature extremes as heat/cold features, pooled weekdays",
+      "lesson": "Prior-3-day temperature extremes give only a small gain (3.036 to 2.945), weaker than earlier lagged-mean features, and likely too small for the judge's bar.",
+      "practice": {
+        "champion_mae": 3.036,
+        "model_mae": 2.945,
+        "wins_pct": 92.43
+      },
+      "submit": true
+    },
+    "ttft_ms": 2393,
+    "type": "result",
+    "duration_ms": 18055,
+    "uuid": "cc0b4246-349f-41a0-82fb-3677fb528288",
+    "ttft_stream_ms": 2097,
+    "time_to_request_ms": 55,
+    "first_content_frame_ms": 2098,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}

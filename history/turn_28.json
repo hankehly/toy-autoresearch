@@ -1,0 +1,117 @@
+{
+  "seconds": 27,
+  "response": {
+    "duration_api_ms": 24218,
+    "stop_reason": "tool_use",
+    "session_id": "cede314b-d5f4-4d6f-b5c8-9143663d8716",
+    "total_cost_usd": 0.06401230000000001,
+    "usage": {
+      "input_tokens": 16,
+      "cache_creation_input_tokens": 6014,
+      "cache_read_input_tokens": 172243,
+      "output_tokens": 2270,
+      "output_tokens_details": {
+        "thinking_tokens": 571
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 6014,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 16,
+        "outputTokens": 2270,
+        "cacheReadInputTokens": 172243,
+        "cacheCreationInputTokens": 6014,
+        "webSearchRequests": 0,
+        "costUSD": 0.06401230000000001,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 571,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 6014,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [
+      {
+        "tool_name": "Bash",
+        "tool_use_id": "toolu_01McdUip9aqSeq6Yi5R7meoj",
+        "tool_input": {
+          "command": "cd /work; python -c \"\nimport pandas as pd,numpy as np\nd=pd.read_parquet('/data');d['date']=pd.to_datetime(d['date']);d=d.sort_values('date').reset_index(drop=True)\nt=d.temp_forecast;dow=d.date.dt.dayofweek\nX=np.column_stack([(dow<5),(dow==5),(dow==6),np.maximum(17-t,0),np.maximum(t-21,0)]).astype(float)\ndef r(X):\n    b=np.linalg.lstsq(X,d.load,rcond=None)[0];e=d.load-X@b;return e\ne=r(X);print(e.std())\nfor k in [1,2,3,7]:print(k,np.corrcoef(e[k:],e[:-k])[0,1])\nprint(pd.Series(e).groupby(dow).mean())\nprint(pd.Series(e).groupby(d.date.dt.month).mean())\nprint(np.corrcoef(e,t)[0,1], np.corrcoef(e.abs(),t)[0,1])\n# residual vs temp bins\nprint(pd.Series(e).groupby(pd.cut(t,[-2,3,8,13,17,21,25,30,36])).agg(['mean','std','count']))\n\""
+        }
+      },
+      {
+        "tool_name": "Bash",
+        "tool_use_id": "toolu_018Z6cGEeSvvrKBDYSTN8k9Q",
+        "tool_input": {
+          "command": "cd /work; sed -i 's/17 - t/15 - t/;s/t - 21/t - 20/' model.py; python check.py && python practice.py champion.py model.py"
+        }
+      }
+    ],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 10,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"idea\":\"Lower heating/cooling thresholds to 15C and 20C\",\"lesson\":\"Moving the thresholds to 15C/20C clearly hurts (3.036 to 3.410); the 17C/21C thresholds are better, and the residuals look like noise.\",\"practice\":{\"champion_mae\":3.036,\"model_mae\":3.41,\"wins_pct\":0.17},\"submit\":false}",
+    "structured_output": {
+      "idea": "Lower heating/cooling thresholds to 15C and 20C",
+      "lesson": "Moving the thresholds to 15C/20C clearly hurts (3.036 to 3.410); the 17C/21C thresholds are better, and the residuals look like noise.",
+      "practice": {
+        "champion_mae": 3.036,
+        "model_mae": 3.41,
+        "wins_pct": 0.17
+      },
+      "submit": false
+    },
+    "ttft_ms": 1509,
+    "type": "result",
+    "duration_ms": 25704,
+    "uuid": "1f504bbc-4819-4b18-a99e-2aeaf9b0f0f4",
+    "ttft_stream_ms": 1157,
+    "time_to_request_ms": 74,
+    "first_content_frame_ms": 1157,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}

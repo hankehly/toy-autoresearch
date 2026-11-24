@@ -1,0 +1,102 @@
+{
+  "seconds": 16,
+  "response": {
+    "duration_api_ms": 13198,
+    "stop_reason": "tool_use",
+    "session_id": "96201ade-fc92-4965-8332-60e5c84e3077",
+    "total_cost_usd": 0.0348522,
+    "usage": {
+      "input_tokens": 10,
+      "cache_creation_input_tokens": 3728,
+      "cache_read_input_tokens": 98702,
+      "output_tokens": 1005,
+      "output_tokens_details": {
+        "thinking_tokens": 155
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 3728,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 10,
+        "outputTokens": 1005,
+        "cacheReadInputTokens": 98702,
+        "cacheCreationInputTokens": 3728,
+        "webSearchRequests": 0,
+        "costUSD": 0.0348522,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 155,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 3728,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 6,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"idea\":\"Add linear time trend feature to regression\",\"lesson\":\"A linear trend adds nothing (3.036 to 3.043); there's no sign of load growth beyond the temperature and weekday effects.\",\"practice\":{\"champion_mae\":3.036,\"model_mae\":3.043,\"wins_pct\":35.68},\"submit\":false}",
+    "structured_output": {
+      "idea": "Add linear time trend feature to regression",
+      "lesson": "A linear trend adds nothing (3.036 to 3.043); there's no sign of load growth beyond the temperature and weekday effects.",
+      "practice": {
+        "champion_mae": 3.036,
+        "model_mae": 3.043,
+        "wins_pct": 35.68
+      },
+      "submit": false
+    },
+    "ttft_ms": 1235,
+    "type": "result",
+    "duration_ms": 14335,
+    "uuid": "755ae6b3-44e2-4f4e-9aa7-2dae72a8a5e2",
+    "ttft_stream_ms": 844,
+    "time_to_request_ms": 53,
+    "first_content_frame_ms": 844,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}

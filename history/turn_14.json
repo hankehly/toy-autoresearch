@@ -1,0 +1,110 @@
+{
+  "seconds": 18,
+  "response": {
+    "duration_api_ms": 15231,
+    "stop_reason": "tool_use",
+    "session_id": "91b2e64c-44ad-4010-98c4-100241c86011",
+    "total_cost_usd": 0.0411929,
+    "usage": {
+      "input_tokens": 12,
+      "cache_creation_input_tokens": 3399,
+      "cache_read_input_tokens": 119129,
+      "output_tokens": 1566,
+      "output_tokens_details": {
+        "thinking_tokens": 230
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 3399,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 12,
+        "outputTokens": 1566,
+        "cacheReadInputTokens": 119129,
+        "cacheCreationInputTokens": 3399,
+        "webSearchRequests": 0,
+        "costUSD": 0.0411929,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 230,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 3399,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [
+      {
+        "tool_name": "Bash",
+        "tool_use_id": "toolu_01JSu4NMDAZ7WPD4t4NBTi4T",
+        "tool_input": {
+          "command": "cd /work; sed -i 's/range(10, 21, 2)/range(15, 20)/; s/range(max(lo, 16), 27, 2)/range(max(lo, 19), 24)/' model.py; python check.py && python practice.py champion.py model.py"
+        }
+      }
+    ],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 7,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"idea\":\"Grid-search heating/cooling thresholds in fit()\",\"lesson\":\"Choosing thresholds by in-sample SSE overfits (3.036 to 3.187); the fixed 17C/21C thresholds generalize better.\",\"practice\":{\"champion_mae\":3.036,\"model_mae\":3.187,\"wins_pct\":5.23},\"submit\":false}",
+    "structured_output": {
+      "idea": "Grid-search heating/cooling thresholds in fit()",
+      "lesson": "Choosing thresholds by in-sample SSE overfits (3.036 to 3.187); the fixed 17C/21C thresholds generalize better.",
+      "practice": {
+        "champion_mae": 3.036,
+        "model_mae": 3.187,
+        "wins_pct": 5.23
+      },
+      "submit": false
+    },
+    "ttft_ms": 1290,
+    "type": "result",
+    "duration_ms": 16386,
+    "uuid": "940400b4-eaec-405d-90fb-63559a668269",
+    "ttft_stream_ms": 943,
+    "time_to_request_ms": 51,
+    "first_content_frame_ms": 943,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}

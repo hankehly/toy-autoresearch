@@ -1,0 +1,102 @@
+{
+  "seconds": 18,
+  "response": {
+    "duration_api_ms": 15331,
+    "stop_reason": "tool_use",
+    "session_id": "ea558f05-e440-4fcf-9c71-6b0c17fe4409",
+    "total_cost_usd": 0.0384167,
+    "usage": {
+      "input_tokens": 10,
+      "cache_creation_input_tokens": 3695,
+      "cache_read_input_tokens": 97867,
+      "output_tokens": 1383,
+      "output_tokens_details": {
+        "thinking_tokens": 385
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 3695,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 10,
+        "outputTokens": 1383,
+        "cacheReadInputTokens": 97867,
+        "cacheCreationInputTokens": 3695,
+        "webSearchRequests": 0,
+        "costUSD": 0.0384167,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 385,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 3695,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 6,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"idea\":\"Add day-over-day forecast temperature change feature\",\"lesson\":\"Today-minus-yesterday temperature change adds no signal (3.036 to 3.059); only multi-day lagged temperature level has helped.\",\"practice\":{\"champion_mae\":3.036,\"model_mae\":3.059,\"wins_pct\":2.08},\"submit\":false}",
+    "structured_output": {
+      "idea": "Add day-over-day forecast temperature change feature",
+      "lesson": "Today-minus-yesterday temperature change adds no signal (3.036 to 3.059); only multi-day lagged temperature level has helped.",
+      "practice": {
+        "champion_mae": 3.036,
+        "model_mae": 3.059,
+        "wins_pct": 2.08
+      },
+      "submit": false
+    },
+    "ttft_ms": 1755,
+    "type": "result",
+    "duration_ms": 16414,
+    "uuid": "43db9708-6873-4c5d-9d7d-1babd1ab56b8",
+    "ttft_stream_ms": 1383,
+    "time_to_request_ms": 52,
+    "first_content_frame_ms": 1383,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}

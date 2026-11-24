@@ -1,0 +1,102 @@
+{
+  "seconds": 22,
+  "response": {
+    "duration_api_ms": 19491,
+    "stop_reason": "tool_use",
+    "session_id": "12fb2f0a-0a82-4958-ad5d-0f7c8f35a85c",
+    "total_cost_usd": 0.0493807,
+    "usage": {
+      "input_tokens": 12,
+      "cache_creation_input_tokens": 4745,
+      "cache_read_input_tokens": 121767,
+      "output_tokens": 1820,
+      "output_tokens_details": {
+        "thinking_tokens": 577
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 4745,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-sonnet-5-5": {
+        "inputTokens": 12,
+        "outputTokens": 1820,
+        "cacheReadInputTokens": 121767,
+        "cacheCreationInputTokens": 4745,
+        "webSearchRequests": 0,
+        "costUSD": 0.0493807,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "thinkingTokens": 577,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 4745,
+        "canonicalModel": "claude-sonnet-5-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 7,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"idea\":\"Huber-weighted robust regression instead of least squares\",\"lesson\":\"Downweighting outlier days hurts (3.036 to 3.064); residuals are near-Gaussian noise, so robust fitting adds nothing.\",\"practice\":{\"champion_mae\":3.036,\"model_mae\":3.064,\"wins_pct\":9.23},\"submit\":false}",
+    "structured_output": {
+      "idea": "Huber-weighted robust regression instead of least squares",
+      "lesson": "Downweighting outlier days hurts (3.036 to 3.064); residuals are near-Gaussian noise, so robust fitting adds nothing.",
+      "practice": {
+        "champion_mae": 3.036,
+        "model_mae": 3.064,
+        "wins_pct": 9.23
+      },
+      "submit": false
+    },
+    "ttft_ms": 2274,
+    "type": "result",
+    "duration_ms": 20929,
+    "uuid": "d1e513c2-2b99-4d54-9d29-ea6c0a4711c8",
+    "ttft_stream_ms": 1944,
+    "time_to_request_ms": 51,
+    "first_content_frame_ms": 1944,
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}
